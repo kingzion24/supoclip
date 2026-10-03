@@ -140,6 +140,10 @@ class VideoUtilsDiarizationTests(unittest.TestCase):
         self.assertIn("Speaker A: Hello there.", result)
         mock_transcription_config.assert_called_once()
         self.assertTrue(mock_transcription_config.call_args.kwargs["speaker_labels"])
+        # No TRANSCRIPTION_LANGUAGE: detect the language instead of assuming English.
+        self.assertTrue(
+            mock_transcription_config.call_args.kwargs["language_detection"]
+        )
 
     def test_load_cached_transcript_data_supports_legacy_word_only_cache(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -187,6 +191,24 @@ class VideoUtilsDiarizationTests(unittest.TestCase):
             ["universal-3-pro", "universal-2"],
         )
 
+    def test_assemblyai_language_options(self):
+        from src.media.transcription import _assemblyai_language_options
+
+        models = ["universal-3-pro", "universal-2"]
+        self.assertEqual(
+            _assemblyai_language_options(None, models),
+            {"language_detection": True, "speech_models": models},
+        )
+        # Swahili is only served by universal-2.
+        self.assertEqual(
+            _assemblyai_language_options("sw", models),
+            {"language_code": "sw", "speech_models": ["universal-2"]},
+        )
+        self.assertEqual(
+            _assemblyai_language_options("en_us", models),
+            {"language_code": "en_us", "speech_models": models},
+        )
+
     def test_get_video_transcript_dispatches_to_whisper(self):
         whisper_result = {
             "text": "Hello there. General Kenobi.",
@@ -212,7 +234,9 @@ class VideoUtilsDiarizationTests(unittest.TestCase):
         }
 
         mock_config = SimpleNamespace(
-            transcription_provider="whisper", whisper_model="base"
+            transcription_provider="whisper",
+            whisper_model="base",
+            transcription_language="sw",
         )
         with patch("src.media.transcription.get_config", return_value=mock_config), patch(
             "src.media.transcription.transcribe_with_whisper", return_value=whisper_result
@@ -225,6 +249,7 @@ class VideoUtilsDiarizationTests(unittest.TestCase):
         self.assertIn("Hello there.", result)
         self.assertIn("General Kenobi.", result)
         mock_transcribe.assert_called_once()
+        self.assertEqual(mock_transcribe.call_args.args[2], "sw")
 
     def test_format_transcript_for_analysis_handles_whisper_dict(self):
         whisper_result = {

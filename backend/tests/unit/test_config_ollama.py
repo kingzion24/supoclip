@@ -32,3 +32,17 @@ def test_whisper_accepts_documented_model_size_setting(monkeypatch):
     assert Config().whisper_model == "tiny"
     monkeypatch.setenv("WHISPER_MODEL", "base")
     assert Config().whisper_model == "base"
+
+
+def test_transcription_language_defaults_to_auto_detect(monkeypatch):
+    monkeypatch.delenv("TRANSCRIPTION_LANGUAGE", raising=False)
+    assert Config().transcription_language is None
+
+    monkeypatch.setenv("TRANSCRIPTION_LANGUAGE", "auto")
+    assert Config().transcription_language is None
+
+    monkeypatch.setenv("TRANSCRIPTION_LANGUAGE", " SW ")
+    assert Config().transcription_language == "sw"
+
+    monkeypatch.setenv("TRANSCRIPTION_LANGUAGE", "en-US")
+    assert Config().transcription_language == "en_us"

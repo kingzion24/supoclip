@@ -83,7 +83,7 @@ utils/               → Thread pool helpers for blocking operations (async_help
 ### Video Processing Pipeline
 
 1. **Input** → YouTube URL (yt-dlp) or uploaded file
-2. **Transcription** → AssemblyAI word-level timestamps (cached as `.transcript_cache.json`)
+2. **Transcription** → AssemblyAI word-level timestamps (cached as `.transcript_cache.json`); spoken language is auto-detected (Swahili routes to `universal-2`) unless `TRANSCRIPTION_LANGUAGE` pins it
 3. **AI Analysis** → Pydantic AI selects 3-7 viral segments (10-45s each) with virality scoring
 4. **Clip Generation** → MoviePy creates 9:16 clips with:
    - Face-centered cropping: MediaPipe → OpenCV DNN → Haar cascade (fallback chain)
@@ -178,6 +178,7 @@ LLM=google-gla:gemini-3-flash-preview # Format: provider:model-name
 GOOGLE_API_KEY=...                   # Or OPENAI_API_KEY / ANTHROPIC_API_KEY
 OLLAMA_BASE_URL=http://localhost:11434/v1  # Optional for ollama:* models
 OLLAMA_API_KEY=...                   # Optional; required for Ollama Cloud
+TRANSCRIPTION_LANGUAGE=auto          # auto-detect, or pin a code like sw (Swahili)
 
 # Optional
 PEXELS_API_KEY=...                   # B-roll stock footage

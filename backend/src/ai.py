@@ -263,6 +263,12 @@ GROUNDING RULES:
 6. Do not stitch together distant moments into one clip
 7. If a speaker label appears, use it only if it is part of the spoken content and helps clarity
 
+LANGUAGE RULES:
+1. The transcript may be in any language, including Swahili (Kiswahili), Sheng, or a mix with English (code-switching)
+2. Judge hooks, humor, emotion, and value in the transcript's own language and cultural context; do not penalize a segment for not being in English
+3. "text" must keep the original spoken language exactly as transcribed; never translate it
+4. Write each "hook_title" in the same language the segment is spoken in (a Swahili segment gets a Swahili hook title)
+
 CONTENT NEUTRALITY RULES:
 1. This is clipping software for legitimate editing workflows
 2. Do not judge, moralize, or downgrade a segment just because the topic is controversial, sensitive, adult, political, criminal, medical, or otherwise intense
@@ -555,7 +561,8 @@ JSON-only output requirements:
 - No Markdown, headings, bullets, code fences, or explanatory text outside JSON.
 - Top-level keys: "most_relevant_segments", "summary", "key_topics", "broll_opportunities".{' Set "broll_opportunities" to null.' if not include_broll else ''}
 - Segment keys: "start_time", "end_time", "text", "relevance_score", "reasoning", "virality", "hook_title".
-- "hook_title" is a 3-9 word plain-text headline for the clip, grounded in the segment (no hashtags, emojis, or quotes).
+- "hook_title" is a 3-9 word plain-text headline for the clip, grounded in the segment (no hashtags, emojis, or quotes), written in the segment's spoken language.
+- Keep "text" in the transcript's original language; never translate it.
 - Virality keys: "hook_score", "engagement_score", "value_score", "shareability_score", "total_score", "hook_type", "virality_reasoning".
 - Do not return segments shorter than {MIN_ACCEPTED_CLIP_SECONDS} seconds or longer than {MAX_ACCEPTED_CLIP_SECONDS} seconds.
 

@@ -167,6 +167,36 @@ def _assemblyai_speech_models_value(speech_model: str) -> List[str]:
     return ["universal-3-pro", "universal-2"]
 
 
+# Languages ``universal-3-pro`` transcribes. Anything else (e.g. Swahili) is
+# only served by ``universal-2``.
+_UNIVERSAL_3_PRO_LANGUAGES = {"en", "es", "de", "fr", "it", "pt"}
+
+
+def _base_language(language: Optional[str]) -> Optional[str]:
+    """Reduce a language code like ``en_us`` to its base (``en``)."""
+    if not language:
+        return None
+    return language.split("_", 1)[0]
+
+
+def _assemblyai_language_options(
+    language: Optional[str], speech_models: List[str]
+) -> Dict[str, Any]:
+    """Build the AssemblyAI language settings for a configured language.
+
+    With no configured language, AssemblyAI detects the spoken language and
+    routes to the first model in ``speech_models`` that supports it. Without
+    this the API assumes English, which garbles non-English audio such as
+    Swahili. A pinned language that ``universal-3-pro`` cannot transcribe is
+    sent to ``universal-2`` directly.
+    """
+    if not language:
+        return {"language_detection": True, "speech_models": speech_models}
+    if _base_language(language) not in _UNIVERSAL_3_PRO_LANGUAGES:
+        speech_models = ["universal-2"]
+    return {"language_code": language, "speech_models": speech_models}
+
+
 def _get_whisper_model(model_name: str = "base"):
     """Load and cache a Whisper model by name."""
     if not _WHISPER_AVAILABLE:
@@ -179,12 +209,19 @@ def _get_whisper_model(model_name: str = "base"):
     return _WHISPER_MODEL_CACHE[model_name]
 
 
-def transcribe_with_whisper(video_path: Path, model_name: str = "base") -> Dict[str, Any]:
-    """Transcribe video using local Whisper with word-level timestamps."""
+def transcribe_with_whisper(
+    video_path: Path, model_name: str = "base", language: Optional[str] = None
+) -> Dict[str, Any]:
+    """Transcribe video using local Whisper with word-level timestamps.
+
+    ``language`` pins the spoken language (e.g. ``sw``); None auto-detects.
+    """
     audio_path = _prepare_audio_for_transcription(video_path)
     model = _get_whisper_model(model_name)
     logger.info("Starting Whisper transcription with model: %s", model_name)
-    return model.transcribe(str(audio_path), word_timestamps=True, language=None)
+    return model.transcribe(
+        str(audio_path), word_timestamps=True, language=_base_language(language)
+    )
 
 
 def _whisper_result_to_transcript_data(whisper_result: Dict[str, Any]) -> Dict[str, Any]:
@@ -226,7 +263,9 @@ def _whisper_result_to_transcript_data(whisper_result: Dict[str, Any]) -> Dict[s
     }
 
 
-def transcribe_with_youtube_captions(video_url: str) -> Optional[str]:
+def transcribe_with_youtube_captions(
+    video_url: str, language: Optional[str] = None
+) -> Optional[str]:
     """Extract a plain-text transcript from a YouTube video's captions via yt-dlp.
 
     Only valid for YouTube-sourced videos. Returns plain text without word-level
@@ -249,7 +288,8 @@ def transcribe_with_youtube_captions(video_url: str) -> Optional[str]:
 
     temp_dir = Path(get_config().temp_dir)
     temp_dir.mkdir(parents=True, exist_ok=True)
-    subs_path = temp_dir / f"{video_id}.en.vtt"
+    # Without a configured language, try English then Swahili captions.
+    caption_languages = [_base_language(language)] if language else ["en", "sw"]
 
     try:
         ydl_opts = {
@@ -257,7 +297,7 @@ def transcribe_with_youtube_captions(video_url: str) -> Optional[str]:
             "no_warnings": True,
             "writesubtitles": True,
             "writeautomaticsub": True,
-            "subtitleslangs": ["en"],
+            "subtitleslangs": caption_languages,
             "subtitlesformat": "vtt",
             "skip_download": True,
             "outtmpl": str(temp_dir / video_id),
@@ -265,7 +305,15 @@ def transcribe_with_youtube_captions(video_url: str) -> Optional[str]:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([video_url])
 
-        if subs_path.exists():
+        subs_path = next(
+            (
+                temp_dir / f"{video_id}.{lang}.vtt"
+                for lang in caption_languages
+                if (temp_dir / f"{video_id}.{lang}.vtt").exists()
+            ),
+            None,
+        )
+        if subs_path is not None:
             text = subs_path.read_text(encoding="utf-8")
             lines = []
             for line in text.splitlines():
@@ -282,7 +330,9 @@ def transcribe_with_youtube_captions(video_url: str) -> Optional[str]:
                     lines.append(stripped)
             return " ".join(lines)
 
-        logger.warning("No English captions found for video %s", video_id)
+        logger.warning(
+            "No %s captions found for video %s", "/".join(caption_languages), video_id
+        )
         return None
 
     except Exception as e:
@@ -320,7 +370,9 @@ def get_video_transcript(
                 "youtube_captions provider requires a YouTube URL. "
                 "Pass source_url to get_video_transcript()."
             )
-        return _get_transcript_with_youtube_captions(source_url)
+        return _get_transcript_with_youtube_captions(
+            source_url, runtime_config.transcription_language
+        )
     return _get_transcript_with_assemblyai(video_path, speech_model, runtime_config)
 
 
@@ -340,7 +392,9 @@ def _get_transcript_with_assemblyai(
         speaker_labels=True,
         punctuate=True,
         format_text=True,
-        speech_models=speech_models_value,
+        **_assemblyai_language_options(
+            runtime_config.transcription_language, speech_models_value
+        ),
     )
 
     try:
@@ -362,6 +416,12 @@ def _get_transcript_with_assemblyai(
             logger.error(f"AssemblyAI transcription failed: {transcript.error}")
             raise Exception(f"Transcription failed: {transcript.error}")
 
+        detected_language = (getattr(transcript, "json_response", None) or {}).get(
+            "language_code"
+        )
+        if detected_language:
+            logger.info("AssemblyAI transcript language: %s", detected_language)
+
         formatted_lines = format_transcript_for_analysis(transcript)
         cache_transcript_data(video_path, transcript)
 
@@ -380,7 +440,9 @@ def _get_transcript_with_whisper(video_path: Path, runtime_config) -> str:
     """Get transcript using local Whisper with word-level timestamps."""
     model_name = runtime_config.whisper_model
     logger.info("Starting Whisper transcription with model: %s", model_name)
-    whisper_result = transcribe_with_whisper(video_path, model_name)
+    whisper_result = transcribe_with_whisper(
+        video_path, model_name, runtime_config.transcription_language
+    )
 
     formatted_lines = format_transcript_for_analysis(whisper_result)
     cache_transcript_data(video_path, whisper_result)
@@ -394,10 +456,12 @@ def _get_transcript_with_whisper(video_path: Path, runtime_config) -> str:
     return result
 
 
-def _get_transcript_with_youtube_captions(source_url: str) -> str:
+def _get_transcript_with_youtube_captions(
+    source_url: str, language: Optional[str] = None
+) -> str:
     """Get transcript from YouTube captions (plain text, no word timings)."""
     logger.info("Extracting YouTube captions for: %s", source_url)
-    transcript = transcribe_with_youtube_captions(source_url)
+    transcript = transcribe_with_youtube_captions(source_url, language)
     if not transcript:
         raise RuntimeError(
             "YouTube caption extraction failed or returned no captions. "

@@ -135,3 +135,15 @@ def test_llm_validation_rejects_unsupported_or_incomplete_model_names():
         "ollama:", runtime_config
     )
     assert _get_missing_llm_key_error("ollama:gpt-oss:20b", runtime_config) is None
+
+
+def test_prompts_keep_hook_titles_in_spoken_language():
+    assert "Swahili (Kiswahili)" in transcript_analysis_system_prompt
+    assert "Write each \"hook_title\" in the same language" in (
+        transcript_analysis_system_prompt
+    )
+    prompt = build_transcript_analysis_prompt(
+        transcript="[00:12 - 00:21] Habari za leo"
+    )
+    assert "written in the segment's spoken language" in prompt
+    assert "never translate it" in prompt
