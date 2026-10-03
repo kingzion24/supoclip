@@ -75,15 +75,16 @@ if not exist ".env" (
     goto :fail
 )
 
-set "FRONTEND_PORT="
-set "ASSEMBLY_AI_API_KEY="
-set "TRANSCRIPTION_PROVIDER="
-set "LLM="
+rem Read .env into KK_* names only: anything set here is inherited by docker
+rem compose and would override the real values in .env.
+set "KK_PORT="
+set "KK_HAS_ASSEMBLY="
+set "KK_PROVIDER="
 set "HAS_LLM_KEY="
 for /f "usebackq eol=# tokens=1,* delims==" %%A in (".env") do call :read_env "%%A" "%%B"
 
-if not defined TRANSCRIPTION_PROVIDER set "TRANSCRIPTION_PROVIDER=assemblyai"
-if /i "%TRANSCRIPTION_PROVIDER%"=="assemblyai" if not defined ASSEMBLY_AI_API_KEY (
+if not defined KK_PROVIDER set "KK_PROVIDER=assemblyai"
+if /i "%KK_PROVIDER%"=="assemblyai" if not defined KK_HAS_ASSEMBLY (
     echo [X] ASSEMBLY_AI_API_KEY is empty in .env. Transcription needs it.
     echo     Add your key, or set TRANSCRIPTION_PROVIDER=whisper to transcribe locally.
     start "" notepad ".env"
@@ -96,7 +97,7 @@ if not defined HAS_LLM_KEY (
     start "" notepad ".env"
     goto :fail
 )
-if not defined FRONTEND_PORT set "FRONTEND_PORT=3001"
+if not defined KK_PORT set "KK_PORT=3001"
 echo [OK] .env looks good.
 
 rem ---------- 5. Clips folder ----------
@@ -153,7 +154,7 @@ echo [OK] Backend is up.
 
 echo [..] Waiting for the web app (the first page load compiles it)...
 :wait_frontend
-curl.exe -s -f -o nul -m 60 http://localhost:%FRONTEND_PORT%/
+curl.exe -s -f -o nul -m 60 http://localhost:%KK_PORT%/
 if not errorlevel 1 goto :frontend_ready
 set /a APP_WAIT+=5
 if %APP_WAIT% geq 900 goto :app_timeout
@@ -164,12 +165,12 @@ goto :wait_frontend
 echo.
 echo  ==========================================
 echo    Katakata is running
-echo    App:    http://localhost:%FRONTEND_PORT%
+echo    App:    http://localhost:%KK_PORT%
 echo    Clips:  %OUT_DIR%
 echo    Stop:   katakata-stop.bat
 echo  ==========================================
 echo.
-start "" "http://localhost:%FRONTEND_PORT%"
+start "" "http://localhost:%KK_PORT%"
 start "" explorer "%OUT_DIR%"
 pause
 exit /b 0
@@ -192,9 +193,9 @@ rem Drop surrounding quotes and spaces.
 if defined VAL set "VAL=%VAL:"=%"
 if defined VAL for /f "tokens=* delims= " %%V in ("%VAL%") do set "VAL=%%V"
 if not defined VAL exit /b 0
-if /i "%KEY%"=="FRONTEND_PORT" set "FRONTEND_PORT=%VAL%"
-if /i "%KEY%"=="ASSEMBLY_AI_API_KEY" set "ASSEMBLY_AI_API_KEY=set"
-if /i "%KEY%"=="TRANSCRIPTION_PROVIDER" set "TRANSCRIPTION_PROVIDER=%VAL%"
+if /i "%KEY%"=="FRONTEND_PORT" set "KK_PORT=%VAL%"
+if /i "%KEY%"=="ASSEMBLY_AI_API_KEY" set "KK_HAS_ASSEMBLY=1"
+if /i "%KEY%"=="TRANSCRIPTION_PROVIDER" set "KK_PROVIDER=%VAL%"
 if /i "%KEY%"=="GOOGLE_API_KEY" set "HAS_LLM_KEY=1"
 if /i "%KEY%"=="OPENAI_API_KEY" set "HAS_LLM_KEY=1"
 if /i "%KEY%"=="ANTHROPIC_API_KEY" set "HAS_LLM_KEY=1"
