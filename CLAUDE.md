@@ -84,7 +84,7 @@ utils/               → Thread pool helpers for blocking operations (async_help
 
 1. **Input** → YouTube URL (yt-dlp) or uploaded file
 2. **Transcription** → AssemblyAI word-level timestamps (cached as `.transcript_cache.json`); spoken language is auto-detected (Swahili routes to `universal-2`) unless `TRANSCRIPTION_LANGUAGE` pins it
-3. **AI Analysis** → Pydantic AI selects 3-7 viral segments (10-45s each) with virality scoring
+3. **AI Analysis** → Pydantic AI selects 3-7 viral segments (10-45s each) with virality scoring. With `TWELVELABS_API_KEY`, `visual_highlights.py` also uploads a 360p proxy to TwelveLabs Pegasus; its highlights are fed to the prompt as signals and missed ones become `hook_type="visual"` clips
 4. **Clip Generation** → MoviePy creates 9:16 clips with:
    - Face-centered cropping: MediaPipe → OpenCV DNN → Haar cascade (fallback chain)
    - Word-synced subtitles from AssemblyAI
@@ -92,6 +92,7 @@ utils/               → Thread pool helpers for blocking operations (async_help
    - Optional transition effects (`backend/transitions/`)
    - Optional B-roll overlays (Pexels API)
    - Caption templates with animation styles
+   - Optional audio layers per task (`media/audio_enhancements.py`): background music from `backend/music/` and a spoken hook (Edge TTS, Swahili voices included), mixed in one ffmpeg pass with `-c:v copy`
 5. **Storage** → Clips to `{TEMP_DIR}/clips/`, metadata to PostgreSQL
 
 ### Frontend Architecture
@@ -150,10 +151,10 @@ PostgreSQL 15. Schema in `init.sql`. Mixed naming conventions:
 - `POST /tasks/{id}/clips/{clip_id}/split` — Split at timestamp
 - `POST /tasks/{id}/clips/merge` — Merge selected clips
 - `PATCH /tasks/{id}/clips/{clip_id}/captions` — Update captions
-- `GET /tasks/{id}/clips/{clip_id}/export?preset=tiktok` — Export with platform preset
+- `GET /tasks/{id}/clips/{clip_id}/export?preset=tiktok` — Export with platform preset (`tiktok`, `reels`, `shorts`, `square`, `landscape`; the last two blur-fill)
 
 **Media:**
-- `GET /fonts`, `GET /transitions`, `GET /caption-templates`, `GET /broll/status`
+- `GET /fonts`, `GET /transitions`, `GET /caption-templates`, `GET /broll/status`, `GET /music` (tracks + TTS voices)
 - `POST /upload` — Upload video file
 - `GET /clips/{filename}` — Serve generated clips
 
@@ -182,6 +183,8 @@ TRANSCRIPTION_LANGUAGE=auto          # auto-detect, or pin a code like sw (Swahi
 
 # Optional
 PEXELS_API_KEY=...                   # B-roll stock footage
+PIXABAY_API_KEY=...                  # B-roll fallback when Pexels has no match
+TWELVELABS_API_KEY=...               # Visual highlights (dance/action) via Pegasus
 REDIS_HOST=localhost                 # Default: localhost
 REDIS_PORT=6379                      # Default: 6379
 QUEUED_TASK_TIMEOUT_SECONDS=180      # Fail-safe for stuck tasks

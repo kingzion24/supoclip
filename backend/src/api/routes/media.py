@@ -269,13 +269,40 @@ async def get_caption_templates():
         return {"templates": default_templates}
 
 
+@router.get("/music")
+async def get_music_tracks():
+    """List background music tracks (files in backend/music/) and TTS voices."""
+    from ...media.audio_enhancements import (
+        VOICE_BY_LANGUAGE,
+        list_music_tracks,
+    )
+
+    return {
+        "tracks": list_music_tracks(),
+        "voices": sorted(
+            {
+                *VOICE_BY_LANGUAGE.values(),
+                "sw-TZ-DaudiNeural",
+                "sw-KE-ZuriNeural",
+                "sw-KE-RafikiNeural",
+            }
+        ),
+    }
+
+
 @router.get("/broll/status")
 async def get_broll_status():
     """Return whether B-roll integrations are configured."""
     config = get_config()
+    providers = [
+        name
+        for name, key in (("pexels", config.pexels_api_key), ("pixabay", config.pixabay_api_key))
+        if key
+    ]
     return {
-        "configured": bool(config.pexels_api_key),
-        "provider": "pexels" if config.pexels_api_key else None,
+        "configured": bool(providers),
+        "provider": providers[0] if providers else None,
+        "providers": providers,
     }
 
 

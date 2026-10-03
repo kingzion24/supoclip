@@ -43,9 +43,10 @@ RUN uv pip install --upgrade --force-reinstall "yt-dlp[default]"
 # Copy source code
 COPY src/ ./src/
 
-# Copy fonts and transitions directories
+# Copy fonts, transitions and background music directories
 COPY fonts/ ./fonts/
 COPY transitions/ ./transitions/
+COPY music/ ./music/
 
 # Create necessary directories for video processing
 RUN mkdir -p /app/uploads /app/clips /app/logs /tmp

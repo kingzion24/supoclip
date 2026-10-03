@@ -31,6 +31,10 @@ from ...config import get_config
 from ...youtube_utils import async_get_youtube_video_info
 from ...font_registry import is_font_accessible
 from ...clip_cleanup import normalize_clip_cleanup_settings
+from ...media.audio_enhancements import (
+    audio_settings_from_metadata,
+    normalize_audio_settings,
+)
 from ...video_utils import VALID_OUTPUT_FORMATS
 from ...admin_auth import require_admin_user
 import redis.asyncio as redis
@@ -181,6 +185,7 @@ def _merge_task_source_metadata(
     output_format: Any = None,
     add_subtitles: Any = None,
     cleanup_settings: Dict[str, Any] | None = None,
+    audio_settings: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     merged = dict(existing or {})
 
@@ -194,6 +199,8 @@ def _merge_task_source_metadata(
         merged["add_subtitles"] = add_subtitles
     if cleanup_settings:
         merged.update(cleanup_settings)
+    if audio_settings is not None:
+        merged["audio_settings"] = audio_settings
 
     return merged
 
@@ -316,6 +323,12 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
         data.get("remove_filler_words"),
         data.get("filtered_words"),
     )
+    audio_settings = normalize_audio_settings(
+        data.get("background_music"),
+        data.get("music_volume"),
+        data.get("hook_voiceover"),
+        data.get("voiceover_voice"),
+    )
     if not raw_source or not raw_source.get("url"):
         raise HTTPException(status_code=400, detail="Source URL is required")
 
@@ -363,6 +376,7 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
             output_format,
             add_subtitles,
             cleanup_settings,
+            audio_settings,
         )
 
         # Save source metadata for resume/retries in environments without sources.url column
@@ -375,6 +389,7 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
                 output_format=output_format,
                 add_subtitles=add_subtitles,
                 cleanup_settings=cleanup_settings,
+                audio_settings=audio_settings,
             ),
         )
 
@@ -1128,6 +1143,7 @@ async def resume_task(
                 metadata.get("remove_filler_words"),
                 metadata.get("filtered_words"),
             )
+            audio_settings = audio_settings_from_metadata(metadata)
 
             if not source_url or not source_type:
                 raise HTTPException(status_code=400, detail="Task source URL is missing")
@@ -1174,6 +1190,7 @@ async def resume_task(
                     output_format,
                     add_subtitles,
                     cleanup_settings,
+                    audio_settings,
                 )
             except Exception:
                 await task_service.task_repo.update_task_status(

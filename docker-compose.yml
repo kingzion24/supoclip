@@ -92,6 +92,7 @@ services:
       - clips:/app/clips
       - ./backend/fonts:/app/fonts
       - ./backend/transitions:/app/transitions
+      - ./backend/music:/app/music
     environment:
       - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
@@ -137,6 +138,8 @@ services:
       - OLLAMA_API_KEY=${OLLAMA_API_KEY:-}
       - TRANSCRIPTION_PROVIDER=${TRANSCRIPTION_PROVIDER:-assemblyai}
       - TRANSCRIPTION_LANGUAGE=${TRANSCRIPTION_LANGUAGE:-auto}
+      - TWELVELABS_API_KEY=${TWELVELABS_API_KEY:-}
+      - PIXABAY_API_KEY=${PIXABAY_API_KEY:-}
       - WHISPER_MODEL_SIZE=${WHISPER_MODEL_SIZE:-medium}
       - MAX_VIDEO_DURATION=${MAX_VIDEO_DURATION:-5400}
       - PRO_YOUTUBE_MAX_VIDEO_DURATION=${PRO_YOUTUBE_MAX_VIDEO_DURATION:-5400}
@@ -221,6 +224,7 @@ services:
       - clips:/app/clips
       - ./backend/fonts:/app/fonts
       - ./backend/transitions:/app/transitions
+      - ./backend/music:/app/music
     environment:
       - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
@@ -266,6 +270,8 @@ services:
       - OLLAMA_API_KEY=${OLLAMA_API_KEY:-}
       - TRANSCRIPTION_PROVIDER=${TRANSCRIPTION_PROVIDER:-assemblyai}
       - TRANSCRIPTION_LANGUAGE=${TRANSCRIPTION_LANGUAGE:-auto}
+      - TWELVELABS_API_KEY=${TWELVELABS_API_KEY:-}
+      - PIXABAY_API_KEY=${PIXABAY_API_KEY:-}
       - WHISPER_MODEL_SIZE=${WHISPER_MODEL_SIZE:-medium}
       - MAX_VIDEO_DURATION=${MAX_VIDEO_DURATION:-5400}
       - PRO_YOUTUBE_MAX_VIDEO_DURATION=${PRO_YOUTUBE_MAX_VIDEO_DURATION:-5400}

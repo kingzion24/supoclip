@@ -1,5 +1,6 @@
 """
-B-Roll functionality for video enhancement using Pexels API.
+B-Roll functionality for video enhancement using the Pexels API, with Pixabay
+as a fallback stock source.
 """
 
 import httpx
@@ -15,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 PEXELS_API_URL = "https://api.pexels.com/videos/search"
 PEXELS_VIDEO_URL = "https://api.pexels.com/videos/videos"
+PIXABAY_VIDEO_API_URL = "https://pixabay.com/api/videos/"
 
 
 class BRollVideo(BaseModel):
@@ -56,11 +58,24 @@ async def search_broll_videos(
         per_page: Number of results to return
 
     Returns:
-        List of video results from Pexels
+        List of video results in the Pexels response shape
     """
+    videos = await _search_pexels_videos(keyword, orientation, size, per_page)
+    if not videos:
+        videos = await _search_pixabay_videos(keyword, per_page)
+    return videos
+
+
+def is_broll_configured() -> bool:
+    runtime_config = get_config()
+    return bool(runtime_config.pexels_api_key or runtime_config.pixabay_api_key)
+
+
+async def _search_pexels_videos(
+    keyword: str, orientation: str, size: str, per_page: int
+) -> List[Dict[str, Any]]:
     runtime_config = get_config()
     if not runtime_config.pexels_api_key:
-        logger.warning("Pexels API key not configured")
         return []
 
     try:
@@ -91,6 +106,72 @@ async def search_broll_videos(
 
     except Exception as e:
         logger.error(f"Error searching Pexels: {e}")
+        return []
+
+
+def _pixabay_hit_to_pexels_shape(hit: Dict[str, Any]) -> Dict[str, Any]:
+    """Map a Pixabay video hit onto the Pexels video fields used here."""
+    video_files = []
+    largest: Dict[str, Any] = {}
+    for rendition in ("large", "medium", "small", "tiny"):
+        file_info = (hit.get("videos") or {}).get(rendition) or {}
+        if not file_info.get("url"):
+            continue
+        width = int(file_info.get("width") or 0)
+        height = int(file_info.get("height") or 0)
+        largest = largest or file_info
+        video_files.append(
+            {
+                "quality": "hd" if min(width, height) >= 720 else "sd",
+                "width": width,
+                "height": height,
+                "link": file_info["url"],
+            }
+        )
+    return {
+        "id": hit.get("id"),
+        "width": int(largest.get("width") or 0),
+        "height": int(largest.get("height") or 0),
+        "duration": int(hit.get("duration") or 0),
+        "url": hit.get("pageURL", ""),
+        "image": largest.get("thumbnail", ""),
+        "video_files": video_files,
+        "user": {"name": hit.get("user", "")},
+        "provider": "pixabay",
+    }
+
+
+async def _search_pixabay_videos(keyword: str, per_page: int) -> List[Dict[str, Any]]:
+    runtime_config = get_config()
+    if not runtime_config.pixabay_api_key:
+        return []
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                PIXABAY_VIDEO_API_URL,
+                params={
+                    "key": runtime_config.pixabay_api_key,
+                    "q": keyword,
+                    # Pixabay rejects per_page below 3.
+                    "per_page": max(3, min(per_page, 200)),
+                    "safesearch": "true",
+                },
+                timeout=30.0,
+            )
+            if response.status_code != 200:
+                logger.error(f"Pixabay API error: {response.status_code}")
+                return []
+
+            videos = [
+                _pixabay_hit_to_pexels_shape(hit)
+                for hit in response.json().get("hits", [])
+            ]
+            logger.info(f"Found {len(videos)} Pixabay B-roll videos for '{keyword}'")
+            return videos
+
+    except Exception as e:
+        logger.error(f"Error searching Pixabay: {e}")
         return []
 
 
@@ -232,8 +313,8 @@ async def fetch_broll_for_opportunities(
     Returns:
         List of B-roll suggestions with download paths
     """
-    if not get_config().pexels_api_key:
-        logger.warning("Pexels API key not configured, skipping B-roll fetch")
+    if not is_broll_configured():
+        logger.warning("No B-roll API key configured (Pexels or Pixabay), skipping B-roll fetch")
         return []
 
     broll_dir = output_dir / "broll"

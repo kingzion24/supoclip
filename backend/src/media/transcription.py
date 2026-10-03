@@ -480,6 +480,7 @@ def cache_transcript_data(video_path: Path, transcript) -> None:
 
     if isinstance(transcript, dict):
         cache_data = _whisper_result_to_transcript_data(transcript)
+        cache_data["language"] = transcript.get("language")
         with open(cache_path, "w") as f:
             json.dump(cache_data, f)
         logger.info("Cached %d words to %s", len(cache_data["words"]), cache_path)
@@ -510,6 +511,9 @@ def cache_transcript_data(video_path: Path, transcript) -> None:
         "words": words_data,
         "utterances": utterances_data,
         "text": transcript.text,
+        "language": (getattr(transcript, "json_response", None) or {}).get(
+            "language_code"
+        ),
     }
 
     with open(cache_path, "w") as f:

@@ -4,6 +4,8 @@ export const EXPORT_PRESETS = [
   { id: "tiktok", label: "TikTok", width: 1080, height: 1920, bitrate: 10_000_000 },
   { id: "reels", label: "Reels", width: 1080, height: 1920, bitrate: 12_000_000 },
   { id: "shorts", label: "Shorts", width: 1080, height: 1920, bitrate: 10_000_000 },
+  { id: "square", label: "Square 1:1", width: 1080, height: 1080, bitrate: 8_000_000 },
+  { id: "landscape", label: "Landscape 16:9", width: 1920, height: 1080, bitrate: 12_000_000 },
 ] as const;
 
 export function getClipUrl(videoUrl: string, version?: string) {

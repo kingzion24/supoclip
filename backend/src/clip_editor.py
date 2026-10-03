@@ -29,13 +29,37 @@ class ExportPreset:
     height: int
     video_bitrate: str
     audio_bitrate: str
+    # "pad" letterboxes with black bars; "blur" fills the empty area with a
+    # blurred, zoomed copy of the clip (used when the aspect ratio changes).
+    fill: str = "pad"
 
 
 EXPORT_PRESETS = {
     "tiktok": ExportPreset("tiktok", 1080, 1920, "10M", "192k"),
     "reels": ExportPreset("reels", 1080, 1920, "12M", "192k"),
     "shorts": ExportPreset("shorts", 1080, 1920, "10M", "192k"),
+    "square": ExportPreset("square", 1080, 1080, "8M", "192k", fill="blur"),
+    "landscape": ExportPreset("landscape", 1920, 1080, "12M", "192k", fill="blur"),
 }
+
+
+def build_export_video_filter(preset: ExportPreset) -> str:
+    """Scale a clip into the preset frame, padding or blur-filling the rest."""
+    width, height = preset.width, preset.height
+    if preset.fill == "blur":
+        return (
+            "split=2[bg][fg];"
+            f"[bg]scale={width}:{height}:force_original_aspect_ratio=increase,"
+            f"crop={width}:{height},boxblur=24:2,eq=brightness=-0.08[blurred];"
+            f"[fg]scale={width}:{height}:force_original_aspect_ratio=decrease:flags=lanczos[sharp];"
+            "[blurred][sharp]overlay=(W-w)/2:(H-h)/2,setsar=1"
+        )
+    return (
+        f"scale={width}:{height}:"
+        "force_original_aspect_ratio=decrease:flags=lanczos,"
+        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,"
+        "setsar=1"
+    )
 
 
 def _safe_name(prefix: str) -> str:
@@ -380,12 +404,7 @@ def export_with_preset(input_path: Path, output_dir: Path, preset_name: str) -> 
         raise ValueError(f"Unknown export preset: {preset_name}")
 
     output_path = output_dir / _safe_name(preset.name)
-    scale_filter = (
-        f"scale={preset.width}:{preset.height}:"
-        "force_original_aspect_ratio=decrease:flags=lanczos,"
-        f"pad={preset.width}:{preset.height}:(ow-iw)/2:(oh-ih)/2,"
-        "setsar=1"
-    )
+    scale_filter = build_export_video_filter(preset)
     command = [
         "ffmpeg",
         "-y",

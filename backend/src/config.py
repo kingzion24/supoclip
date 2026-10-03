@@ -34,6 +34,19 @@ class Config:
             os.getenv("ASSEMBLY_AI_HTTP_TIMEOUT_SECONDS", "900")
         )
         self.pexels_api_key = self._get_runtime_setting("PEXELS_API_KEY")
+        self.pixabay_api_key = self._get_optional_env("PIXABAY_API_KEY")
+        # Optional TwelveLabs video understanding: finds visual highlights
+        # (dance, action, reactions) that a transcript cannot see.
+        self.twelvelabs_api_key = self._get_optional_env("TWELVELABS_API_KEY")
+        self.twelvelabs_pegasus_model = (
+            self._get_optional_env("TWELVELABS_PEGASUS_MODEL") or "pegasus1.5"
+        )
+        self.twelvelabs_max_visual_clips = int(
+            os.getenv("TWELVELABS_MAX_VISUAL_CLIPS", "2")
+        )
+        self.twelvelabs_min_highlight_score = int(
+            os.getenv("TWELVELABS_MIN_HIGHLIGHT_SCORE", "60")
+        )
         self.oxylabs_username = self._get_optional_env("OXYLABS_USERNAME")
         self.oxylabs_password = self._get_optional_env("OXYLABS_PASSWORD")
         self.oxylabs_video_quality = os.getenv("OXYLABS_VIDEO_QUALITY", "720")
