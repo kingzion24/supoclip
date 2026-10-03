@@ -9,6 +9,8 @@ RUN apt-get update && apt-get install -y \
     unzip \
     fonts-noto-color-emoji \
     fontconfig \
+    libgles2 \
+    libegl1 \
     && fc-cache -f \
     && rm -rf /var/lib/apt/lists/*
 
@@ -43,9 +45,10 @@ RUN uv pip install --upgrade --force-reinstall "yt-dlp[default]"
 # Copy source code
 COPY src/ ./src/
 
-# Copy fonts and transitions directories
+# Copy fonts, transitions and background music directories
 COPY fonts/ ./fonts/
 COPY transitions/ ./transitions/
+COPY music/ ./music/
 
 # Create necessary directories for video processing
 RUN mkdir -p /app/uploads /app/clips /app/logs /tmp

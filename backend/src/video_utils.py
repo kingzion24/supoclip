@@ -249,8 +249,13 @@ def create_optimized_clip(
     keep_ranges: Optional[List[Tuple[float, float]]] = None,
     hook_title: Optional[str] = None,
     extend_to_sentence: bool = True,
+    motion_plan: Optional[Dict[str, Any]] = None,
 ) -> bool:
-    """Create clip with optional subtitles. output_format: 'vertical' (9:16) or 'original' (keep source size)."""
+    """Create clip with optional subtitles. output_format: 'vertical' (9:16) or 'original' (keep source size).
+
+    ``motion_plan`` carries the AI's per-clip motion direction ({"level",
+    "callout_words"}) for caption templates with ``motion: "auto"``.
+    """
     try:
         if keep_ranges:
             effective_keep_ranges = normalize_source_ranges(keep_ranges)
@@ -328,6 +333,7 @@ def create_optimized_clip(
 
             burn_ass_path: Optional[Path] = None
             fonts_dir: Optional[Path] = None
+            motion_beats: List[float] = []
             if (add_subtitles or hook_title) and build_assemblyai_ass_subtitles(
                 video_path,
                 start_time,
@@ -342,6 +348,8 @@ def create_optimized_clip(
                 effective_keep_ranges,
                 hook_title=hook_title,
                 include_captions=add_subtitles,
+                motion_beats=motion_beats,
+                motion_plan=motion_plan,
             ):
                 burn_ass_path = ass_path
                 fonts_dir = ass_fonts_dir(
@@ -354,6 +362,15 @@ def create_optimized_clip(
                 reframe_format,
                 subtitle_ass_path=burn_ass_path,
                 fonts_dir=fonts_dir,
+                punch_times=motion_beats,
+                speaker_words=(
+                    get_words_for_keep_ranges(
+                        load_cached_transcript_data(video_path) or {},
+                        effective_keep_ranges,
+                    )
+                    if reframe_format == "vertical_speaker"
+                    else None
+                ),
             )
             if not framed_ok:
                 raise RuntimeError("ffmpeg reframe render failed")
@@ -473,6 +490,8 @@ def create_clips_from_segments(
                     "shareability_score": segment.get("shareability_score", 0),
                     "hook_type": segment.get("hook_type"),
                     "hook_title": segment.get("hook_title"),
+                    "post_caption": segment.get("post_caption"),
+                    "hashtags": segment.get("hashtags") or [],
                     "keep_ranges": keep_ranges,
                 }
                 clips_info.append(clip_info)
@@ -611,7 +630,7 @@ def create_clips_with_transitions(
         f"Creating {len(segments)} standalone clips subtitles={add_subtitles} template '{caption_template}'"
     )
     logger.info(
-        "Inter-clip transitions are disabled for standalone SupoClip exports"
+        "Inter-clip transitions are disabled for standalone Katakata exports"
     )
     return create_clips_from_segments(
         video_path,

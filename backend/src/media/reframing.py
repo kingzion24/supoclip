@@ -25,6 +25,9 @@ from .common import (
     OUTPUT_FPS,
     logger,
 )
+from .face_detection import create_face_detector
+from .motion_graphics import punch_zoom_fragment
+from .speaker_cuts import build_cut_expression, plan_speaker_cuts
 from .ffmpeg import (
     build_audio_output_args,
     build_final_video_encode_args,
@@ -165,19 +168,9 @@ def detect_faces_in_clip(
 
     try:
         # Try to use MediaPipe (most accurate)
-        mp_face_detection = None
-        try:
-            import mediapipe as mp
-
-            mp_face_detection = mp.solutions.face_detection.FaceDetection(
-                model_selection=0,  # 0 for short-range (better for close faces)
-                min_detection_confidence=0.5,
-            )
+        mp_face_detection = create_face_detector(model_selection=0)
+        if mp_face_detection is not None:
             logger.info("Using MediaPipe face detector")
-        except ImportError:
-            logger.info("MediaPipe not available, falling back to OpenCV")
-        except Exception as e:
-            logger.warning(f"MediaPipe face detector failed to initialize: {e}")
 
         # Initialize OpenCV face detectors as fallback
         haar_cascade = cv2.CascadeClassifier(
@@ -589,8 +582,14 @@ def build_pan_expression(
 def detect_speaker_reframe_plan(
     clip_path: Path,
     output_format: str,
+    speaker_words: Optional[List[Dict[str, Any]]] = None,
 ) -> Optional[Dict[str, Any]]:
-    """Build a speaker-aware pan or split-screen plan for a trimmed clip."""
+    """Build a speaker-aware pan, cut or split-screen plan for a trimmed clip.
+
+    ``vertical_speaker`` cuts to whoever is talking, using the transcript's
+    speaker labels (``speaker_words``, in clip time) when available and face
+    motion otherwise. ``vertical_pan`` glides between speakers.
+    """
     try:
         width, height = ffprobe_video_size(clip_path)
         if width / max(height, 1) <= 1.2:
@@ -666,21 +665,39 @@ def detect_speaker_reframe_plan(
                 return None
             times, left_values = parse_motion_metadata(left_motion)
             _, right_values = parse_motion_metadata(right_motion)
-            timeline = build_speaker_timeline_from_motion(
-                times,
-                left_values,
-                right_values,
-            )
+            cut_plan = None
+            if output_format == "vertical_speaker" and speaker_words:
+                cut_plan = plan_speaker_cuts(
+                    speaker_words, duration, times, left_values, right_values
+                )
+            if cut_plan:
+                timeline, mapping = cut_plan
+                logger.info(
+                    "Speaker cuts from diarization: %d shots, speakers %s",
+                    len(timeline),
+                    mapping,
+                )
+            else:
+                timeline = build_speaker_timeline_from_motion(
+                    times,
+                    left_values,
+                    right_values,
+                )
             if len(timeline) < 2:
                 return None
 
+        x_expression = (
+            build_cut_expression(timeline, left_x, right_x)
+            if output_format == "vertical_speaker"
+            else build_pan_expression(timeline, left_x, right_x)
+        )
         return {
             "mode": "pan",
             "width": width,
             "height": height,
             "crop_w": crop_w,
             "crop_h": height,
-            "x_expression": build_pan_expression(timeline, left_x, right_x),
+            "x_expression": x_expression,
             "timeline": timeline,
         }
     except Exception as exc:
@@ -708,15 +725,7 @@ def compute_vertical_crop_dims(
 
 def _open_face_detectors():
     """Initialise the MediaPipe (preferred) + Haar (fallback) face detectors."""
-    mp_face = None
-    try:
-        import mediapipe as mp
-
-        mp_face = mp.solutions.face_detection.FaceDetection(
-            model_selection=1, min_detection_confidence=0.5
-        )
-    except Exception as exc:
-        logger.info("MediaPipe unavailable (%s); using Haar", exc)
+    mp_face = create_face_detector(model_selection=1)
     haar = cv2.CascadeClassifier(
         cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
     )
@@ -1237,12 +1246,15 @@ def render_reframed_clip_ffmpeg(
     output_format: str,
     subtitle_ass_path: Optional[Path] = None,
     fonts_dir: Optional[Path] = None,
+    punch_times: Optional[List[float]] = None,
+    speaker_words: Optional[List[Dict[str, Any]]] = None,
 ) -> Tuple[bool, int, int]:
     """Render the final framed clip and (optionally) burn subtitles in one pass.
 
     Collapsing reframing + subtitle burn into a single encode avoids a whole
     generation of re-encode loss. The pass uses the high-quality profile, CFR
-    output and loudness-normalised audio.
+    output and loudness-normalised audio. ``punch_times`` adds motion-graphics
+    punch-zooms just before the subtitles, so captions never zoom.
     """
     width, height = ffprobe_video_size(input_path)
     has_audio = ffprobe_has_audio(input_path)
@@ -1253,8 +1265,15 @@ def render_reframed_clip_ffmpeg(
     )
     audio_args = build_audio_output_args(has_audio)
 
+    def finish(out_w: int, out_h: int) -> Optional[str]:
+        """The punch-zoom and subtitle stages that follow the framing chain."""
+        stages = [punch_zoom_fragment(punch_times or [], out_w, out_h), subs]
+        tail = ",".join(stage for stage in stages if stage)
+        return tail or None
+
     if output_format == "original":
         out_w, out_h = round_to_even(width), round_to_even(height)
+        subs = finish(out_w, out_h)
         if not subs:
             shutil.copyfile(input_path, output_path)
             return True, out_w, out_h
@@ -1269,10 +1288,12 @@ def render_reframed_clip_ffmpeg(
         return run_ffmpeg_command(command).returncode == 0, out_w, out_h
 
     plan = (
-        detect_speaker_reframe_plan(input_path, output_format)
-        if output_format in {"vertical_pan", "vertical_split"}
+        detect_speaker_reframe_plan(input_path, output_format, speaker_words)
+        if output_format in {"vertical_pan", "vertical_speaker", "vertical_split"}
         else None
     )
+
+    subs = finish(1080, 1920)
 
     if plan and plan["mode"] == "split":
         left = plan["regions"]["left"]

@@ -1,0 +1,14 @@
+# Used by katakata-start.bat on Windows (on top of docker-compose.yml).
+# Clips are written straight into the folder you chose on your PC instead of
+# a Docker-managed volume, so you can open them in File Explorer.
+services:
+  backend:
+    volumes:
+      - type: bind
+        source: ${KATAKATA_OUTPUT_DIR:?Run katakata-start.bat to choose a clips folder}
+        target: /app/uploads/clips
+  worker:
+    volumes:
+      - type: bind
+        source: ${KATAKATA_OUTPUT_DIR:?Run katakata-start.bat to choose a clips folder}
+        target: /app/uploads/clips

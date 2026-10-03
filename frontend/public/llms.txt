@@ -1,14 +1,14 @@
-# SupoClip
+# Katakata
 
-> SupoClip is an open-source AI video clipper that turns long videos into captioned, vertical short-form clips for YouTube Shorts, TikTok, Instagram Reels, and similar platforms.
+> Katakata is an open-source AI video clipper that turns long videos into captioned, vertical short-form clips for YouTube Shorts, TikTok, Instagram Reels, and similar platforms.
 
-SupoClip can be used as a hosted web application, as a native iOS app, or self-hosted from its AGPL-3.0 source code. The workflow accepts YouTube URLs and uploaded video files, transcribes the source, proposes promising segments, scores candidate clips, creates face-aware vertical crops, adds word-synced captions, and exports platform-ready videos.
+Katakata can be used as a hosted web application, as a native iOS app, or self-hosted from its AGPL-3.0 source code. The workflow accepts YouTube URLs and uploaded video files, transcribes the source, proposes promising segments, scores candidate clips, creates face-aware vertical crops, adds word-synced captions, and exports platform-ready videos.
 
 ## Canonical website
 
-- [SupoClip](https://www.supoclip.com/): Product overview, features, pricing, and hosted application access.
+- [Katakata](https://www.supoclip.com/): Product overview, features, pricing, and hosted application access.
 - [GitHub repository](https://github.com/FujiwaraChoki/supoclip): Source code, setup instructions, architecture, license, and contribution history.
-- [SupoClip for iOS](https://apps.apple.com/us/app/supoclip/id6784760040): Native iPhone app on the App Store, backed by the hosted service.
+- [Katakata for iOS](https://apps.apple.com/us/app/supoclip/id6784760040): Native iPhone app on the App Store, backed by the hosted service.
 
 ## Product pages
 
@@ -18,8 +18,8 @@ SupoClip can be used as a hosted web application, as a native iOS app, or self-h
 
 ## Guides and comparisons
 
-- [SupoClip Blog](https://www.supoclip.com/blog): Product comparisons and practical video-clipping workflows.
-- [Best free OpusClip alternative](https://www.supoclip.com/blog/best-free-opusclip-alternative): Comparison of SupoClip's open-source workflow with OpusClip.
+- [Katakata Blog](https://www.supoclip.com/blog): Product comparisons and practical video-clipping workflows.
+- [Best free OpusClip alternative](https://www.supoclip.com/blog/best-free-opusclip-alternative): Comparison of Katakata's open-source workflow with OpusClip.
 
 ## Key capabilities
 
@@ -40,7 +40,7 @@ SupoClip can be used as a hosted web application, as a native iOS app, or self-h
 
 ## Publisher
 
-- Name: SupoClip Team
+- Name: Katakata Team
 - Website: https://www.supoclip.com/
 - Source: https://github.com/FujiwaraChoki/supoclip
 - Contact: support@supoclip.com

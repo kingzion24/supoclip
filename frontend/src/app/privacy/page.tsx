@@ -9,18 +9,18 @@ const LAST_UPDATED = "June 25, 2026";
 const CONTACT_EMAIL = "privacy@supoclip.com";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy | SupoClip",
+  title: "Privacy Policy | Katakata",
   description:
-    "How SupoClip collects, uses, shares, and protects your data when you use the SupoClip video-clipping service.",
+    "How Katakata collects, uses, shares, and protects your data when you use the Katakata video-clipping service.",
   alternates: {
     canonical: `${getSiteUrl()}/privacy`,
   },
   openGraph: {
-    title: "SupoClip Privacy Policy",
-    description: "How SupoClip handles your data.",
+    title: "Katakata Privacy Policy",
+    description: "How Katakata handles your data.",
     type: "website",
     url: `${getSiteUrl()}/privacy`,
-    siteName: "SupoClip",
+    siteName: "Katakata",
   },
 };
 
@@ -44,12 +44,12 @@ export default function PrivacyPolicyPage() {
       <header className="border-b bg-background/95">
         <div className="mx-auto flex h-16 max-w-3xl items-center justify-between px-6">
           <Link href="/" className="flex items-center gap-2.5">
-            <Image src="/logo.png" alt="SupoClip" width={24} height={24} className="rounded-lg" />
+            <Image src="/logo.png" alt="Katakata" width={24} height={24} className="rounded-lg" />
             <span
               className="text-lg font-bold tracking-tight"
               style={{ fontFamily: "var(--font-syne), var(--font-geist-sans), system-ui" }}
             >
-              SupoClip
+              Katakata
             </span>
           </Link>
           <a href={HOSTED_APP_URL} target="_blank" rel="noopener noreferrer">
@@ -75,16 +75,16 @@ export default function PrivacyPolicyPage() {
         <div className="mt-12 space-y-10">
           <Section title="Overview">
             <p>
-              This Privacy Policy explains how SupoClip (&ldquo;SupoClip,&rdquo; &ldquo;we,&rdquo;
+              This Privacy Policy explains how Katakata (&ldquo;Katakata,&rdquo; &ldquo;we,&rdquo;
               &ldquo;us&rdquo;) collects, uses, shares, and protects information when you use the
-              SupoClip apps and hosted service (the &ldquo;Service&rdquo;), which turn long-form
+              Katakata apps and hosted service (the &ldquo;Service&rdquo;), which turn long-form
               videos into short, captioned clips.
             </p>
             <p>
-              SupoClip is also available as open-source software you can self-host. If you use a
+              Katakata is also available as open-source software you can self-host. If you use a
               self-hosted instance operated by you or a third party, that operator&mdash;not
-              SupoClip&mdash;is responsible for the data processed by that instance. This policy
-              describes the SupoClip-operated hosted service.
+              Katakata&mdash;is responsible for the data processed by that instance. This policy
+              describes the Katakata-operated hosted service.
             </p>
           </Section>
 
@@ -214,7 +214,7 @@ export default function PrivacyPolicyPage() {
 
         <div className="mt-14 border-t pt-8 text-sm text-muted-foreground">
           <Link href="/" className="underline hover:text-foreground">
-            Back to SupoClip
+            Back to Katakata
           </Link>
         </div>
       </article>

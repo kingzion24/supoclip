@@ -204,6 +204,7 @@ class TaskService(ClipEditingMixin):
         should_cancel: Optional[Callable] = None,
         clip_ready_callback: Optional[Callable] = None,
         cleanup_settings: Optional[Dict[str, Any]] = None,
+        audio_settings: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Process a task: download video, analyze, create clips.
@@ -369,6 +370,7 @@ class TaskService(ClipEditingMixin):
                     output_format,
                     add_subtitles,
                     normalized_cleanup_settings,
+                    audio_settings=audio_settings,
                 )
                 pending_clip_path = Path(clip_info["path"]) if clip_info else None
                 await check_cancelled()
@@ -397,6 +399,8 @@ class TaskService(ClipEditingMixin):
                         shareability_score=clip_info.get("shareability_score", 0),
                         hook_type=clip_info.get("hook_type"),
                         hook_title=clip_info.get("hook_title"),
+                        post_caption=clip_info.get("post_caption"),
+                        hashtags=clip_info.get("hashtags"),
                     )
 
                     # Update task's clip IDs array

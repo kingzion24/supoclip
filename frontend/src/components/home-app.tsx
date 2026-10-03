@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
   AlertCircle, ArrowRight, ArrowUp, Captions, CaptionsOff, Check, ChevronDown, Crop, FileVideo,
-  Loader2, Paintbrush, Paperclip, Upload, Wand2, X, Youtube,
+  Loader2, Music, Paintbrush, Paperclip, Upload, Wand2, X, Youtube,
 } from "lucide-react";
 import { CaptionSizeControl } from "@/components/caption-size-control";
 import { FONT_SEARCH_THRESHOLD, getYouTubeThumbnailUrl, uploadVideoFile } from "@/lib/video-upload";
@@ -17,6 +17,7 @@ import { SubscriptionCancelBanner } from "@/components/subscription-cancel-banne
 import { Skeleton } from "@/components/ui/skeleton";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Kbd } from "@/components/ui/kbd";
 import { useSession } from "@/lib/auth-client";
@@ -44,16 +45,51 @@ interface CaptionTemplate {
   font_color?: string;
 }
 
-type OutputFormat = "vertical" | "vertical_pan" | "vertical_split" | "original";
+type OutputFormat = "vertical" | "vertical_pan" | "vertical_speaker" | "vertical_split" | "original";
 
 const FRAMINGS: { id: OutputFormat; label: string; hint: string }[] = [
   { id: "vertical", label: "Auto 9:16", hint: "Face-tracked vertical crop" },
-  { id: "vertical_pan", label: "Speaker pan", hint: "Follows whoever is talking" },
+  { id: "vertical_speaker", label: "Speaker cuts", hint: "Cuts to whoever is talking, podcast style" },
+  { id: "vertical_pan", label: "Speaker pan", hint: "Glides to whoever is talking" },
   { id: "vertical_split", label: "Split-screen", hint: "Two speakers stacked" },
   { id: "original", label: "Original", hint: "Keep the source aspect ratio" },
 ];
 
 const COLOR_SWATCHES = ["#FFFFFF", "#000000", "#FFD700", "#FF6B6B", "#4ECDC4", "#45B7D1"];
+const NO_MUSIC = "none";
+const AUTO_VOICE = "auto";
+const SETTINGS_STORAGE_KEY = "supoclip:create-settings";
+
+const LANGUAGE_NAMES: Record<string, string> = {
+  sw: "Swahili", en: "English", fr: "French", es: "Spanish", pt: "Portuguese",
+  de: "German", it: "Italian", ar: "Arabic", hi: "Hindi",
+};
+const REGION_NAMES: Record<string, string> = { TZ: "Tanzania", KE: "Kenya", US: "US", GB: "UK" };
+
+// "sw-TZ-RehemaNeural" -> "Rehema · Swahili (Tanzania)"
+function formatVoiceName(voice: string) {
+  const [language, region, name] = voice.split("-");
+  const speaker = (name || voice).replace(/(Multilingual)?Neural$/, "");
+  return `${speaker} · ${LANGUAGE_NAMES[language] ?? language} (${REGION_NAMES[region] ?? region})`;
+}
+
+function loadSavedSettings(): Record<string, unknown> | null {
+  try {
+    const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveSettings(settings: Record<string, unknown>) {
+  try {
+    window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  } catch {
+    // Storage can be unavailable (private mode); remembering settings is optional.
+  }
+}
 
 function formatBytes(bytes: number) {
   if (bytes > 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
@@ -90,6 +126,13 @@ export default function HomeApp() {
   const [pauseThresholdMs, setPauseThresholdMs] = useState("900");
   const [removeFillerWords, setRemoveFillerWords] = useState(false);
   const [filteredWords, setFilteredWords] = useState("");
+  const [backgroundMusic, setBackgroundMusic] = useState(NO_MUSIC);
+  const [musicVolume, setMusicVolume] = useState(15);
+  const [hookVoiceover, setHookVoiceover] = useState(false);
+  const [voiceoverVoice, setVoiceoverVoice] = useState(AUTO_VOICE);
+  const [musicTracks, setMusicTracks] = useState<string[]>([]);
+  const [voices, setVoices] = useState<string[]>([]);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   const [recent, setRecent] = useState<GenerationSummary[] | null>(null);
   const [billingSummary, updateBillingSummary] = useBillingSummary(Boolean(session?.user?.id));
@@ -129,6 +172,56 @@ export default function HomeApp() {
       .then((data) => { if (data) setAvailableTemplates(data.templates || []); })
       .catch((error) => console.error("Failed to load caption templates:", error));
   }, []);
+
+  useEffect(() => {
+    fetch("/api/music")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (!data) return;
+        const tracks: string[] = data.tracks || [];
+        const voiceList: string[] = data.voices || [];
+        setMusicTracks(tracks);
+        setVoices(voiceList);
+        // Drop remembered choices the server no longer offers.
+        setBackgroundMusic((current) => (current === NO_MUSIC || tracks.includes(current) || (current === "random" && tracks.length > 0) ? current : NO_MUSIC));
+        setVoiceoverVoice((current) => (current === AUTO_VOICE || voiceList.includes(current) ? current : AUTO_VOICE));
+      })
+      .catch((error) => console.error("Failed to load music tracks:", error));
+  }, []);
+
+  // "Clip this" on the Discover page links here with ?url=<video>.
+  useEffect(() => {
+    const sharedUrl = new URLSearchParams(window.location.search).get("url");
+    if (sharedUrl && /^https:\/\/(www\.)?(youtube\.com|youtu\.be)\//.test(sharedUrl)) setUrl(sharedUrl);
+  }, []);
+
+  // Restore the options used last time (per browser, best effort).
+  useEffect(() => {
+    const saved = loadSavedSettings();
+    if (saved) {
+      if (typeof saved.captionTemplate === "string") setCaptionTemplate(saved.captionTemplate);
+      if (FRAMINGS.some((f) => f.id === saved.outputFormat)) setOutputFormat(saved.outputFormat as OutputFormat);
+      if (typeof saved.addSubtitles === "boolean") setAddSubtitles(saved.addSubtitles);
+      if (typeof saved.cutLongPauses === "boolean") setCutLongPauses(saved.cutLongPauses);
+      if (typeof saved.pauseThresholdMs === "string") setPauseThresholdMs(saved.pauseThresholdMs);
+      if (typeof saved.removeFillerWords === "boolean") setRemoveFillerWords(saved.removeFillerWords);
+      if (typeof saved.filteredWords === "string") setFilteredWords(saved.filteredWords);
+      if (typeof saved.backgroundMusic === "string") setBackgroundMusic(saved.backgroundMusic);
+      if (typeof saved.musicVolume === "number") setMusicVolume(saved.musicVolume);
+      if (typeof saved.hookVoiceover === "boolean") setHookVoiceover(saved.hookVoiceover);
+      if (typeof saved.voiceoverVoice === "string") setVoiceoverVoice(saved.voiceoverVoice);
+    }
+    setSettingsLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    saveSettings({
+      captionTemplate, outputFormat, addSubtitles, cutLongPauses, pauseThresholdMs, removeFillerWords,
+      filteredWords, backgroundMusic, musicVolume, hookVoiceover, voiceoverVoice,
+    });
+  }, [settingsLoaded, captionTemplate, outputFormat, addSubtitles, cutLongPauses, pauseThresholdMs,
+    removeFillerWords, filteredWords, backgroundMusic, musicVolume, hookVoiceover, voiceoverVoice]);
 
   useEffect(() => {
     if (!session?.user?.id) return;
@@ -199,6 +292,7 @@ export default function HomeApp() {
   const controlsDisabled = isLoading || generationRequiresUpgrade;
   const hasSource = sourceType === "upload" ? Boolean(file) : Boolean(url.trim());
   const cleanupCount = [cutLongPauses, removeFillerWords, filteredWords.trim().length > 0].filter(Boolean).length;
+  const audioCount = [backgroundMusic !== NO_MUSIC, hookVoiceover].filter(Boolean).length;
   const customized = fontFamily !== null || fontSize !== null || fontColor !== null;
 
   const handleSubmit = async (e?: React.FormEvent) => {
@@ -242,6 +336,10 @@ export default function HomeApp() {
           pause_threshold_ms: normalizedPauseThreshold,
           remove_filler_words: removeFillerWords,
           filtered_words: normalizedFilteredWords,
+          background_music: backgroundMusic === NO_MUSIC ? null : backgroundMusic,
+          music_volume: musicVolume / 100,
+          hook_voiceover: hookVoiceover,
+          voiceover_voice: voiceoverVoice === AUTO_VOICE ? null : voiceoverVoice,
         }),
       });
 
@@ -259,6 +357,8 @@ export default function HomeApp() {
         pause_threshold_ms: normalizedPauseThreshold,
         remove_filler_words: removeFillerWords,
         filtered_words: normalizedFilteredWords,
+        background_music: backgroundMusic !== NO_MUSIC,
+        hook_voiceover: hookVoiceover,
         processing_mode: "fast",
       });
       window.location.href = `/tasks/${startResult.task_id}`;
@@ -311,7 +411,7 @@ export default function HomeApp() {
               <AlertCircle className="h-4 w-4 text-amber-600" />
               <AlertDescription className="text-sm text-amber-900">
                 <span className="font-medium">{generationGateMessage}</span>{" "}
-                Free accounts can browse SupoClip, but video generation requires a paid plan.
+                Free accounts can browse Katakata, but video generation requires a paid plan.
                 <Link href="/settings" className="ml-1 font-semibold underline underline-offset-2">Upgrade in settings</Link>.
               </AlertDescription>
             </Alert>
@@ -563,6 +663,57 @@ export default function HomeApp() {
                 </PopoverContent>
               </Popover>
 
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Chip disabled={controlsDisabled} active={audioCount > 0}>
+                    <Music className="size-3.5" />Audio{audioCount > 0 && <span className="rounded-full bg-foreground px-1.5 text-[10px] text-background">{audioCount}</span>}
+                    <ChevronDown className="size-3 opacity-60" />
+                  </Chip>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-[min(92vw,340px)] space-y-4 rounded-2xl">
+                  <div>
+                    <p className="text-sm font-medium">Audio</p>
+                    <p className="text-xs text-muted-foreground">Mixed into every clip after it renders.</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label htmlFor="background-music" className="text-xs font-medium text-muted-foreground">Background music</label>
+                    <Select value={backgroundMusic} onValueChange={setBackgroundMusic}>
+                      <SelectTrigger id="background-music" className="w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NO_MUSIC}>None</SelectItem>
+                        <SelectItem value="random" disabled={musicTracks.length === 0}>Random track</SelectItem>
+                        {musicTracks.map((track) => <SelectItem key={track} value={track}>{track.replace(/\.[^.]+$/, "")}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    {musicTracks.length === 0 && <p className="text-xs text-muted-foreground">No tracks yet. Add audio files to backend/music/.</p>}
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-medium text-muted-foreground">Music volume</span>
+                      <span className="tabular-nums">{musicVolume}%</span>
+                    </div>
+                    <Slider aria-label="Music volume" min={0} max={100} step={5} value={[musicVolume]} onValueChange={([value]) => setMusicVolume(value)} disabled={backgroundMusic === NO_MUSIC} />
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <label htmlFor="hook-voiceover" className="text-sm font-medium">Spoken hook</label>
+                      <p className="text-xs text-muted-foreground">An AI voice reads the hook title at the start, in the video&apos;s language (Swahili supported).</p>
+                    </div>
+                    <Switch id="hook-voiceover" checked={hookVoiceover} onCheckedChange={setHookVoiceover} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label htmlFor="voiceover-voice" className="text-xs font-medium text-muted-foreground">Voice</label>
+                    <Select value={voiceoverVoice} onValueChange={setVoiceoverVoice} disabled={!hookVoiceover}>
+                      <SelectTrigger id="voiceover-voice" className="w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={AUTO_VOICE}>Match the video&apos;s language</SelectItem>
+                        {voices.map((voice) => <SelectItem key={voice} value={voice}>{formatVoiceName(voice)}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </PopoverContent>
+              </Popover>
+
               <div className="ml-auto flex items-center gap-2">
                 <span className="hidden text-xs text-muted-foreground sm:inline-flex sm:items-center sm:gap-1">
                   {isLoading ? <span role="status">{statusMessage || "Working…"}</span> : hasSource ? <><Kbd>⌘</Kbd><Kbd>↵</Kbd></> : null}
@@ -670,6 +821,10 @@ function FramingGlyph({ kind }: { kind: OutputFormat }) {
     <span className="flex h-12 items-center justify-center rounded-lg bg-muted" aria-hidden>
       {kind === "original" ? (
         <span className="h-6 w-10 rounded-[3px] border-2 border-foreground/70" />
+      ) : kind === "vertical_speaker" ? (
+        <span className="flex h-9 w-5 flex-col items-center justify-center gap-1 rounded-[3px] border-2 border-foreground/70">
+          <span className="size-1.5 rounded-full bg-brand" /><span className="size-1.5 rounded-full bg-foreground/30" />
+        </span>
       ) : kind === "vertical_split" ? (
         <span className="flex h-9 w-5 flex-col gap-0.5 rounded-[3px] border-2 border-foreground/70 p-0.5"><span className="flex-1 rounded-[1px] bg-foreground/30" /><span className="flex-1 rounded-[1px] bg-foreground/30" /></span>
       ) : (

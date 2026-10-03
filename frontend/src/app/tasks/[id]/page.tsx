@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { useTaskProgress } from "@/hooks/use-task-progress";
 import { StatusBadge, ACTIVE_TASK_STATUSES } from "@/components/app/status-badge";
-import { getClipUrl, requestAction, downloadBlob, EXPORT_PRESETS } from "@/lib/clip-actions";
+import { getClipUrl, requestAction, downloadBlob, EXPORT_PRESETS, clipFileName, saveFilesToFolder } from "@/lib/clip-actions";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { PageLoading, PageError } from "@/components/app/page-state";
@@ -40,6 +40,7 @@ import {
   Clapperboard,
   Clock,
   Edit2,
+  FolderDown,
   Link2Off,
   Loader2,
   PauseCircle,
@@ -79,6 +80,8 @@ interface Clip {
   shareability_score: number;
   hook_type: string | null;
   hook_title: string | null;
+  post_caption?: string | null;
+  hashtags?: string[];
 }
 
 interface TaskDetails {
@@ -450,6 +453,14 @@ export default function TaskPage() {
     }
   };
 
+  const fetchClipBlob = async (clip: Clip): Promise<Blob> => {
+    const response = exportPreset === "original"
+      ? await fetch(getClipUrl(clip.video_url, clip.filename), { cache: "no-store" })
+      : await fetch(`${taskApiUrl}/${task?.id}/clips/${clip.id}/export?preset=${exportPreset}`, { cache: "no-store" });
+    if (!response.ok) throw new Error(await buildSupportError(response, "Failed to export clip"));
+    return response.blob();
+  };
+
   const handleExportClip = async (clipId: string, fallbackFilename: string) => {
     if (!session?.user?.id || !task?.id) return;
 
@@ -465,6 +476,31 @@ export default function TaskPage() {
     const blob = await response.blob();
     downloadBlob(blob, `${fallbackFilename.replace(/\.mp4$/i, "")}_${exportPreset}.mp4`);
   };
+
+  const handleSaveAllToFolder = () => runAction("save-all", async () => {
+    const ordered = [...clips].sort((a, b) => a.clip_order - b.clip_order);
+    const suffix = exportPreset === "original" ? "" : `_${exportPreset}`;
+    const files = ordered.map((clip) => ({
+      name: clipFileName(clip.clip_order, clip.hook_title, clip.filename, suffix),
+      load: () => fetchClipBlob(clip),
+    }));
+    try {
+      const saved = await saveFilesToFolder(files, (done, total) => {
+        toast.loading(`Saving clip ${done} of ${total}…`, { id: "save-all" });
+      });
+      if (saved) {
+        toast.success(`Saved ${files.length} clips to your folder`, { id: "save-all" });
+        return;
+      }
+    } catch (error) {
+      toast.dismiss("save-all");
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      throw error;
+    }
+    // Browsers without a folder picker (Firefox, Safari): download one by one.
+    for (const file of files) downloadBlob(await file.load(), file.name);
+    toast.success(`Downloaded ${files.length} clips`);
+  });
 
   const handleDownloadClip = (clip: Clip) => {
     if (exportPreset === "original") {
@@ -703,6 +739,10 @@ export default function TaskPage() {
                 ))}
               </div>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Button variant="outline" size="sm" className="h-8" onClick={handleSaveAllToFolder} disabled={pendingAction !== null}>
+                  {pendingAction === "save-all" ? <Loader2 className="size-3.5 animate-spin" /> : <FolderDown className="size-3.5" />}
+                  Save all to folder
+                </Button>
                 <span className="hidden sm:inline">Download as</span>
                 <Select value={exportPreset} onValueChange={setExportPreset}>
                   <SelectTrigger size="sm" aria-label="Download format" className="h-8 min-w-[112px] bg-background"><SelectValue /></SelectTrigger>

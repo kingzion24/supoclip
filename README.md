@@ -1,6 +1,6 @@
 <p align="center">
-  <a href="https://www.supoclip.com">
-    <img src="assets/banner.jpg" alt="SupoClip dashboard with video input, caption controls, and recent clips" width="100%" />
+  <a href="https://github.com/kingzion24/supoclip">
+    <img src="assets/banner.jpg" alt="Katakata dashboard with video input, caption controls, and recent clips" width="100%" />
   </a>
 </p>
 
@@ -12,40 +12,32 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="License: AGPL-3.0" /></a>
-  <a href="https://www.supoclip.com"><img src="https://img.shields.io/badge/hosted-supoclip.com-black.svg" alt="Hosted at supoclip.com" /></a>
   <a href="docs/README.md"><img src="https://img.shields.io/badge/docs-docs%2F-green.svg" alt="Documentation" /></a>
-</p>
-
-<p align="center">
-  <a href="https://apps.apple.com/us/app/supoclip/id6784760040">
-    <img src="frontend/public/app-store-badge.svg" alt="Download SupoClip on the App Store" height="40" />
-  </a>
 </p>
 
 ---
 
-SupoClip is an open-source, AI-powered video clipping tool. Give it a long video — a podcast, a talk, a stream VOD — and it finds the most viral-worthy moments, scores them, and renders them as vertical 9:16 clips with face-centered cropping, word-synced subtitles, hook titles, and optional B-roll. Run it yourself, customize it, inspect it — or use the hosted version and skip the setup.
+Katakata is an open-source, AI-powered video clipping tool. Give it a long video — a podcast, a talk, a stream VOD — and it finds the most viral-worthy moments, scores them, and renders them as vertical 9:16 clips with face-centered cropping, word-synced subtitles, hook titles, and optional B-roll. Run it yourself, customize it, inspect it.
 
-## Ways to Use SupoClip
+Katakata ("cut-cut" in Swahili) is a fork of [SupoClip](https://github.com/FujiwaraChoki/supoclip) by its original authors, released under the same AGPL-3.0 license. It adds Swahili transcription, TwelveLabs visual highlights, background music and spoken hooks, and Kinetic motion-graphics caption styles.
+
+## Ways to Use Katakata
 
 | | |
 |---|---|
-| **Hosted web app** | [www.supoclip.com](https://www.supoclip.com) — no infrastructure to run |
-| **iOS app** | [SupoClip on the App Store](https://apps.apple.com/us/app/supoclip/id6784760040) — the same hosted pipeline, from your iPhone |
 | **Self-host** | Docker Compose setup below — AGPL-3.0, unlimited usage on your own hardware |
-| **MCP server** | [`mcp/`](mcp/) — use SupoClip from Claude, Cursor, and other MCP clients |
+| **MCP server** | [`mcp/`](mcp/) — use Katakata from Claude, Cursor, and other MCP clients |
 | **REST API** | API keys from `/settings/api-keys` authenticate the backend directly — see the [API reference](docs/api-reference.md) |
 
-## Why SupoClip Exists
+## Why Katakata Exists
 
 OpusClip is genuinely good at what it does — AI clip selection, accurate captions, virality scoring. But your usage is metered by plan, some exports carry platform branding, and your content and workflows live on their servers under their terms.
 
-SupoClip gives you the same core pipeline without the leash:
+Katakata gives you the same core pipeline without the leash:
 
 - **Self-hostable** — run it on your own hardware, process as much as it can handle
 - **No watermarks** — your content stays yours
 - **Open source** — AGPL-3.0, full transparency, fork and extend it however you like
-- **Hosted option** — when you'd rather not manage servers, the cloud version is there
 
 ## Features
 
@@ -87,6 +79,15 @@ The template sets `FRONTEND_PORT=3107`. Existing deployments without this settin
 
 To use a different LLM provider, self-host with Ollama, or configure the optional pieces (B-roll, analytics, emails, YouTube metadata), see the [configuration guide](docs/configuration.md). If something misbehaves, the [troubleshooting guide](docs/troubleshooting.md) covers the common failure modes.
 
+### Windows (one double-click)
+
+1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) and [Git](https://git-scm.com/download/win).
+2. Clone the repo: `git clone https://github.com/kingzion24/supoclip.git katakata`
+3. In the `katakata` folder, copy `.env.example` to `.env` and fill in at least `ASSEMBLY_AI_API_KEY` and one AI key (for example a free `GOOGLE_API_KEY`). Save it.
+4. Double-click **`katakata-start.bat`**. It starts Docker Desktop if needed, checks your `.env`, asks once which folder to save clips in, builds and starts everything, and opens the app in your browser. The first run takes 10-20 minutes; later starts take seconds.
+
+Clips are written straight into the folder you chose (each `.mp4` has a small `.source_map.json` next to it that the editor uses). Editing a clip (trim, captions) saves a new file next to the old one, and deleting in the app leaves the files in place, so the folder keeps every version. For a tidy set, open a video's clips page and use **Save all to folder**: it writes clean, numbered copies (named after each clip's headline) into any folder you pick. Run `katakata-start.bat /choose` to switch folders and `katakata-stop.bat` to stop.
+
 ## Documentation
 
 Everything beyond this page lives in [`docs/`](docs/README.md):
@@ -111,6 +112,6 @@ make test
 
 ## License
 
-SupoClip is released under the [AGPL-3.0 License](LICENSE).
+Katakata is released under the [AGPL-3.0 License](LICENSE).
 
 Contributions are accepted under the terms in [CONTRIBUTING.md](CONTRIBUTING.md), including a license grant that allows the project owner to sublicense and relicense contributed code.

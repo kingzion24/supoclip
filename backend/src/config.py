@@ -25,12 +25,31 @@ class Config:
         self.transcription_provider = self._normalize_transcription_provider(
             os.getenv("TRANSCRIPTION_PROVIDER", "assemblyai")
         )
+        self.transcription_language = self._normalize_transcription_language(
+            os.getenv("TRANSCRIPTION_LANGUAGE", "auto")
+        )
         self.llm = self._get_runtime_setting("LLM") or self._infer_default_llm()
         self.assembly_ai_api_key = self._get_runtime_setting("ASSEMBLY_AI_API_KEY")
         self.assembly_ai_http_timeout_seconds = int(
             os.getenv("ASSEMBLY_AI_HTTP_TIMEOUT_SECONDS", "900")
         )
         self.pexels_api_key = self._get_runtime_setting("PEXELS_API_KEY")
+        self.pixabay_api_key = self._get_optional_env("PIXABAY_API_KEY")
+        # Country whose current trends steer clip picking, captions and hashtags
+        # (ISO code, e.g. TZ). Set TRENDS_REGION= (empty) to turn trends off.
+        self.trends_region = os.getenv("TRENDS_REGION", "TZ").strip().upper()
+        # Optional TwelveLabs video understanding: finds visual highlights
+        # (dance, action, reactions) that a transcript cannot see.
+        self.twelvelabs_api_key = self._get_optional_env("TWELVELABS_API_KEY")
+        self.twelvelabs_pegasus_model = (
+            self._get_optional_env("TWELVELABS_PEGASUS_MODEL") or "pegasus1.5"
+        )
+        self.twelvelabs_max_visual_clips = int(
+            os.getenv("TWELVELABS_MAX_VISUAL_CLIPS", "2")
+        )
+        self.twelvelabs_min_highlight_score = int(
+            os.getenv("TWELVELABS_MIN_HIGHLIGHT_SCORE", "60")
+        )
         self.oxylabs_username = self._get_optional_env("OXYLABS_USERNAME")
         self.oxylabs_password = self._get_optional_env("OXYLABS_PASSWORD")
         self.oxylabs_video_quality = os.getenv("OXYLABS_VIDEO_QUALITY", "720")
@@ -136,7 +155,7 @@ class Config:
         self.aws_access_key_id = self._get_optional_env("AWS_ACCESS_KEY_ID")
         self.aws_secret_access_key = self._get_optional_env("AWS_SECRET_ACCESS_KEY")
         self.ses_from_email = os.getenv(
-            "SES_FROM_EMAIL", "SupoClip <onboarding@example.com>"
+            "SES_FROM_EMAIL", "Katakata <onboarding@example.com>"
         )
         self.app_base_url = (
             self._get_optional_env("NEXT_PUBLIC_APP_URL") or "http://localhost:3107"
@@ -226,6 +245,14 @@ class Config:
         if normalized in ("whisper", "youtube_captions"):
             return normalized
         return "assemblyai"
+
+    @staticmethod
+    def _normalize_transcription_language(value: str | None) -> str | None:
+        """Return a spoken-language code (e.g. ``sw``), or None to auto-detect."""
+        normalized = (value or "").strip().lower().replace("-", "_")
+        if normalized in ("", "auto", "detect"):
+            return None
+        return normalized
 
     @staticmethod
     def _normalize_youtube_metadata_provider(value: str | None) -> str:

@@ -5,7 +5,7 @@ import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Bot, CornerDownLeft, Film, LogOut, Plus, Search, Settings, Shield, Sparkles,
+  Bot, Compass, CornerDownLeft, Film, LogOut, Plus, Search, Settings, Shield, Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import { signOut, useSession } from "@/lib/auth-client";
@@ -22,6 +22,7 @@ type NavItem = { href: string; label: string; icon: typeof Film; match: (path: s
 
 const NAV: NavItem[] = [
   { href: "/", label: "Create", icon: Sparkles, match: (p) => p === "/" },
+  { href: "/discover", label: "Discover", icon: Compass, match: (p) => p.startsWith("/discover") },
   { href: "/list", label: "Library", icon: Film, match: (p) => p.startsWith("/list") || p.startsWith("/tasks") },
   { href: "/settings/api-keys", label: "Agents & API", icon: Bot, match: (p) => p.startsWith("/settings/api-keys") },
   { href: "/settings", label: "Settings", icon: Settings, match: (p) => p === "/settings" },
@@ -76,7 +77,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         <Link href="/" className={cn("flex h-14 items-center gap-2 font-display text-lg font-bold tracking-tight", compact ? "justify-center" : "px-2")}>
           <Image src="/logo.png" alt="" width={24} height={24} className="size-6" priority />
-          {!compact && "SupoClip"}
+          {!compact && "Katakata"}
         </Link>
 
         <SidebarLink compact={compact} href="/" label="New generation" shortcut="N" className="mb-4 mt-1 bg-foreground text-background hover:bg-foreground/90 hover:text-background">
@@ -116,7 +117,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className={cn(user && "flex min-w-0 flex-1 flex-col pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0")}>
         {user ? <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b bg-background/80 px-4 backdrop-blur md:hidden">
           <Link href="/" className="flex items-center gap-2 font-display text-lg font-bold tracking-tight">
-            <Image src="/logo.png" alt="" width={22} height={22} className="size-[22px]" />SupoClip
+            <Image src="/logo.png" alt="" width={22} height={22} className="size-[22px]" />Katakata
           </Link>
           <button type="button" onClick={() => setPaletteOpen(true)} aria-label="Search generations" className="rounded-lg p-2 text-muted-foreground hover:bg-accent">
             <Search className="size-5" />

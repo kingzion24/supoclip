@@ -63,7 +63,11 @@ def test_expired_budget_stops_before_another_poll(monkeypatch):
 
 
 def test_transcription_timeout_does_not_resubmit_paid_job(monkeypatch, tmp_path):
-    runtime_config = SimpleNamespace(assembly_ai_api_key="test", assembly_ai_http_timeout_seconds=2)
+    runtime_config = SimpleNamespace(
+        assembly_ai_api_key="test",
+        assembly_ai_http_timeout_seconds=2,
+        transcription_language=None,
+    )
     helper = Mock(side_effect=TimeoutError("deadline exceeded"))
     monkeypatch.setattr(transcription, "_submit_and_wait_for_assemblyai_transcript", helper)
     monkeypatch.setattr(transcription, "_prepare_audio_for_transcription", lambda path: path)

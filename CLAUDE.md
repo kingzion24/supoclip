@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SupoClip is an open-source alternative to OpusClip — an AI-powered video clipping tool that transforms long-form content into viral short clips. AGPL-3.0 licensed.
+Katakata is an open-source alternative to OpusClip — an AI-powered video clipping tool that transforms long-form content into viral short clips. AGPL-3.0 licensed. It is a fork of SupoClip (https://github.com/FujiwaraChoki/supoclip): user-facing text says "Katakata", while technical identifiers keep the `supoclip` name (Python package, `x-supoclip-*` auth headers, storage keys, Docker paths, the `supoclip-mcp` package) so existing deployments and clients keep working.
 
 ## Development Commands
 
@@ -22,7 +22,7 @@ Services: Frontend (:3107), Backend API (:8000, docs at /docs), Worker (ARQ), Po
 
 ### Backend (local)
 
-Uses `uv` (not pip/poetry). Requires Python 3.11+, ffmpeg, running PostgreSQL and Redis.
+Uses `uv` (not pip/poetry). Requires Python 3.11+, ffmpeg, running PostgreSQL and Redis. MediaPipe face detection also needs the system GL libraries (`apt install libgles2 libegl1` on Debian/Ubuntu); without them it falls back to OpenCV.
 
 ```bash
 cd backend
@@ -83,15 +83,17 @@ utils/               → Thread pool helpers for blocking operations (async_help
 ### Video Processing Pipeline
 
 1. **Input** → YouTube URL (yt-dlp) or uploaded file
-2. **Transcription** → AssemblyAI word-level timestamps (cached as `.transcript_cache.json`)
-3. **AI Analysis** → Pydantic AI selects 3-7 viral segments (10-45s each) with virality scoring
+2. **Transcription** → AssemblyAI word-level timestamps (cached as `.transcript_cache.json`); spoken language is auto-detected (Swahili routes to `universal-2`) unless `TRANSCRIPTION_LANGUAGE` pins it
+3. **AI Analysis** → current trends for `TRENDS_REGION` (default TZ; `trends.py`: Google Trends RSS + YouTube most-popular when a YouTube Data API key is set, cached 1h, fail-soft) are added to the prompt signals; each segment also gets a `post_caption` and 3-8 `hashtags` (stored on `generated_clips`). Pydantic AI selects 3-7 viral segments (10-45s each) with virality scoring. With `TWELVELABS_API_KEY`, `visual_highlights.py` also uploads a 360p proxy to TwelveLabs Pegasus; its highlights are fed to the prompt as signals and missed ones become `hook_type="visual"` clips
 4. **Clip Generation** → MoviePy creates 9:16 clips with:
-   - Face-centered cropping: MediaPipe → OpenCV DNN → Haar cascade (fallback chain)
+   - Face-centered cropping: MediaPipe → OpenCV DNN → Haar cascade (fallback chain). `media/face_detection.py` uses the legacy `mp.solutions` API when present, else the MediaPipe Tasks `FaceDetector` with the bundled full-range BlazeFace model (`media/models/`), scanning wide frames in square tiles so small faces in two-shots are found
+   - Framings: `vertical` (face-tracked), `vertical_speaker` (Speaker cuts: hard cuts to whoever is talking, from AssemblyAI speaker labels mapped to faces by face motion, `media/speaker_cuts.py`), `vertical_pan` (glides between speakers by face motion), `vertical_split`, `original`. Speaker modes need a wide two-person shot with ≤2 scene cuts, else they fall back to `vertical`
    - Word-synced subtitles from AssemblyAI
    - Custom fonts (TTF files in `backend/fonts/`)
    - Optional transition effects (`backend/transitions/`)
    - Optional B-roll overlays (Pexels API)
-   - Caption templates with animation styles
+   - Caption templates with animation styles; templates with `motion` (Kinetic, Kinetic Green) add kinetic typography from `media/motion_graphics.py`: slam-in hook title + accent bar, keyword callouts, punch-zooms on those beats (per-frame scale+crop before the subtitle burn), and a progress bar. Podcast Pro uses `motion: "auto"`: the AI returns a per-clip `motion_level` (none for emotional/serious moments, subtle for most, full for numbers/lists/high energy) and up to 3 `callout_words` copied from the segment, modelled on how The Diary of a CEO edits clips; it also uses a white `hook_banner`
+   - Optional audio layers per task (`media/audio_enhancements.py`): background music from `backend/music/` and a spoken hook (Edge TTS, Swahili voices included), mixed in one ffmpeg pass with `-c:v copy`
 5. **Storage** → Clips to `{TEMP_DIR}/clips/`, metadata to PostgreSQL
 
 ### Frontend Architecture
@@ -150,10 +152,11 @@ PostgreSQL 15. Schema in `init.sql`. Mixed naming conventions:
 - `POST /tasks/{id}/clips/{clip_id}/split` — Split at timestamp
 - `POST /tasks/{id}/clips/merge` — Merge selected clips
 - `PATCH /tasks/{id}/clips/{clip_id}/captions` — Update captions
-- `GET /tasks/{id}/clips/{clip_id}/export?preset=tiktok` — Export with platform preset
+- `GET /tasks/{id}/clips/{clip_id}/export?preset=tiktok` — Export with platform preset (`tiktok`, `reels`, `shorts`, `square`, `landscape`; the last two blur-fill)
 
 **Media:**
-- `GET /fonts`, `GET /transitions`, `GET /caption-templates`, `GET /broll/status`
+- `GET /fonts`, `GET /transitions`, `GET /caption-templates`, `GET /broll/status`, `GET /music` (tracks + TTS voices)
+- `GET /discover/trending?region=TZ`, `GET /discover/search?q=&kind=videos|podcasts&min_minutes=` — Discover page (`discover.py`, yt-dlp search, no key); "Clip this" opens `/?url=<video>`
 - `POST /upload` — Upload video file
 - `GET /clips/{filename}` — Serve generated clips
 
@@ -178,9 +181,12 @@ LLM=google-gla:gemini-3-flash-preview # Format: provider:model-name
 GOOGLE_API_KEY=...                   # Or OPENAI_API_KEY / ANTHROPIC_API_KEY
 OLLAMA_BASE_URL=http://localhost:11434/v1  # Optional for ollama:* models
 OLLAMA_API_KEY=...                   # Optional; required for Ollama Cloud
+TRANSCRIPTION_LANGUAGE=auto          # auto-detect, or pin a code like sw (Swahili)
 
 # Optional
 PEXELS_API_KEY=...                   # B-roll stock footage
+PIXABAY_API_KEY=...                  # B-roll fallback when Pexels has no match
+TWELVELABS_API_KEY=...               # Visual highlights (dance/action) via Pegasus
 REDIS_HOST=localhost                 # Default: localhost
 REDIS_PORT=6379                      # Default: 6379
 QUEUED_TASK_TIMEOUT_SECONDS=180      # Fail-safe for stuck tasks
@@ -208,6 +214,11 @@ Edit `backend/src/ai.py`: `simplified_system_prompt` controls selection criteria
 - Static talking-head crops get a slow ~5% Ken Burns punch-in (`kenburns_zoom_fragment`); tracked pans and split screens keep their own motion
 
 ## iOS App
+
+The upstream SupoClip iOS app is not part of Katakata. The web app only shows an
+App Store badge, Smart App Banner and app structured data when
+`NEXT_PUBLIC_APP_STORE_ID` is set to your own app's id. The notes below describe
+the upstream app and its billing hooks.
 
 A native iOS app ships on the App Store
 (https://apps.apple.com/us/app/supoclip/id6784760040, app id `6784760040`). Its

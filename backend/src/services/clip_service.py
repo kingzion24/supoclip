@@ -21,6 +21,7 @@ from ..clip_editor import (
 from ..video_utils import VALID_OUTPUT_FORMATS, parse_timestamp_to_seconds, create_optimized_clip
 from ..utils.async_helpers import run_in_thread
 from ..clip_cleanup import normalize_clip_cleanup_settings
+from ..media.audio_enhancements import audio_settings_from_metadata
 from ..clip_source_map import (
     load_clip_source_ranges,
     save_clip_source_ranges,
@@ -173,6 +174,8 @@ class ClipEditingMixin:
                         "shareability_score": clip.get("shareability_score", 0),
                         "hook_type": clip.get("hook_type"),
                         "hook_title": clip.get("hook_title"),
+                        "post_caption": clip.get("post_caption"),
+                        "hashtags": clip.get("hashtags") or [],
                     }
                 )
 
@@ -186,6 +189,7 @@ class ClipEditingMixin:
                 output_format,
                 add_subtitles,
                 normalized_cleanup_settings,
+                audio_settings=audio_settings_from_metadata(metadata),
             )
         finally:
             if source_type == "youtube":
@@ -215,6 +219,8 @@ class ClipEditingMixin:
                 shareability_score=clip_info.get("shareability_score", 0),
                 hook_type=clip_info.get("hook_type"),
                 hook_title=clip_info.get("hook_title"),
+                post_caption=clip_info.get("post_caption"),
+                hashtags=clip_info.get("hashtags"),
             )
             clip_ids.append(clip_id)
 
@@ -484,6 +490,12 @@ class ClipEditingMixin:
                     source_ranges=source_ranges,
                     position_y=position_y,
                 )
+            await self.video_service.apply_audio_layers(
+                transcript_video_path,
+                output_path,
+                clip.get("hook_title"),
+                audio_settings_from_metadata(settings),
+            )
         finally:
             if downloaded_source is not None:
                 self._cleanup_source_video(downloaded_source, "youtube", source_url)

@@ -220,7 +220,12 @@ def build_clip_signal_summary(video_path: Path, transcript: str) -> str:
     trigger_pattern = re.compile(
         r"\b(wait|what|no way|seriously|actually|but|however|because|mistake|secret|"
         r"wild|crazy|insane|never|always|nobody|everybody|why|how|haha|laugh|lol|damn|"
-        r"shit|fuck)\b",
+        r"shit|fuck|"
+        # Swahili / Sheng: "oh so", "come on people", "really", "why", "how",
+        # "no", "secret", "mistake", "I didn't know", "amazing", "danger",
+        # "how come", "supposedly", "I swear", "suddenly".
+        r"kumbe|jamani|kweli|kwa nini|vipi|hapana|siri|kosa|sikujua|ajabu|"
+        r"hatari|mbona|eti|wallahi|ghafla)\b",
         re.IGNORECASE,
     )
     candidates: List[Tuple[float, Dict[str, Any], str]] = []
@@ -338,6 +343,7 @@ def get_absolute_words_in_range(
                 "start": overlap_start / 1000.0,
                 "end": overlap_end / 1000.0,
                 "confidence": word_data.get("confidence", 1.0),
+                "speaker": word_data.get("speaker"),
             }
         )
 
@@ -546,6 +552,7 @@ def get_words_for_keep_ranges(
                     "start": timeline_offset + (word["start"] - keep_start),
                     "end": timeline_offset + (word["end"] - keep_start),
                     "confidence": word.get("confidence", 1.0),
+                    "speaker": word.get("speaker"),
                 }
             )
         timeline_offset += keep_end - keep_start

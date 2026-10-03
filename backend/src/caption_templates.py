@@ -12,6 +12,13 @@ templates keep working):
   - uppercase:          force caption text to uppercase (bool)
   - max_words_per_line: words shown per caption line (int)
   - glow:               soft neon glow on the text outline (bool)
+  - motion:             kinetic typography and motion graphics: slam-in hook
+                        title, keyword callouts with punch-zooms, progress bar
+                        (bool, see media/motion_graphics.py)
+                        True = always full motion; "auto" = the AI picks
+                        none/subtle/full per clip (calm on emotional moments)
+  - progress_bar:       with motion, draw the progress bar (bool, default True)
+  - hook_banner:        hook title as black caps on a white box (bool)
 """
 
 from typing import Dict, Any, Literal
@@ -180,6 +187,82 @@ CAPTION_TEMPLATES: Dict[str, Dict[str, Any]] = {
         "max_words_per_line": 5,
         "position_y": 0.80,
     },
+    "kinetic": {
+        "name": "Kinetic",
+        "description": "Motion graphics: slam-in hook, big keyword callouts with punch-zooms and a progress bar",
+        "font_family": "THEBOLDFONT",
+        "font_size": 34,
+        "font_color": "#FFFFFF",
+        "highlight_color": "#FFE000",
+        "emphasis_color": "#FFE000",
+        "stroke_color": "#000000",
+        "stroke_width": 4,
+        "background": False,
+        "background_color": None,
+        "word_box": False,
+        "word_box_color": None,
+        "animation": "karaoke",
+        "word_pop": True,
+        "emoji": True,
+        "uppercase": True,
+        "shadow": True,
+        "glow": False,
+        "max_words_per_line": 3,
+        "position_y": 0.80,
+        "motion": True,
+        "progress_bar": True,
+    },
+    "podcast_pro": {
+        "name": "Podcast Pro",
+        "description": "Podcast-clip style: white hook banner, keyword captions, and motion the AI adds only where a clip needs energy",
+        "font_family": "THEBOLDFONT",
+        "font_size": 32,
+        "font_color": "#FFFFFF",
+        "highlight_color": "#FFD400",
+        "emphasis_color": "#FFD400",
+        "stroke_color": "#000000",
+        "stroke_width": 3,
+        "background": False,
+        "background_color": None,
+        "word_box": False,
+        "word_box_color": None,
+        "animation": "karaoke",
+        "word_pop": False,
+        "emoji": False,
+        "uppercase": True,
+        "shadow": True,
+        "glow": False,
+        "max_words_per_line": 3,
+        "position_y": 0.78,
+        "motion": "auto",
+        "progress_bar": True,
+        "hook_banner": True,
+    },
+    "kinetic_green": {
+        "name": "Kinetic Green",
+        "description": "Kinetic motion graphics with a green pill on the active word",
+        "font_family": "THEBOLDFONT",
+        "font_size": 34,
+        "font_color": "#FFFFFF",
+        "highlight_color": "#00FF66",
+        "emphasis_color": "#00FF66",
+        "stroke_color": "#000000",
+        "stroke_width": 4,
+        "background": False,
+        "background_color": None,
+        "word_box": True,
+        "word_box_color": "#00BF49",
+        "animation": "karaoke",
+        "word_pop": True,
+        "emoji": False,
+        "uppercase": True,
+        "shadow": True,
+        "glow": False,
+        "max_words_per_line": 3,
+        "position_y": 0.80,
+        "motion": True,
+        "progress_bar": True,
+    },
 }
 
 
@@ -202,6 +285,9 @@ TEMPLATE_DEFAULTS: Dict[str, Any] = {
     "glow": False,
     "max_words_per_line": 4,
     "position_y": 0.80,
+    "motion": False,
+    "progress_bar": True,
+    "hook_banner": False,
 }
 
 
@@ -235,6 +321,7 @@ def get_template_info() -> list:
             "font_size": template["font_size"],
             "font_color": template["font_color"],
             "highlight_color": template["highlight_color"],
+            "motion": template.get("motion") or False,
         }
         for name, template in CAPTION_TEMPLATES.items()
     ]

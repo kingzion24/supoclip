@@ -37,6 +37,14 @@ from ..clip_source_map import (
     save_clip_source_ranges,
 )
 from ..ai import get_most_relevant_parts_by_transcript
+from ..media.audio_enhancements import apply_audio_enhancements, has_audio_enhancements
+from ..trends import format_trend_signals, get_trends
+from ..visual_highlights import (
+    build_visual_segments,
+    detect_visual_highlights,
+    format_visual_signals,
+    is_enabled as visual_highlights_enabled,
+)
 from ..config import get_config
 
 logger = logging.getLogger(__name__)
@@ -110,7 +118,7 @@ class VideoService:
             "relevance_score": 0.25,
             "reasoning": (
                 "AI analysis did not identify a strong standalone segment, "
-                "so SupoClip generated the first available portion of the video."
+                "so Katakata generated the first available portion of the video."
             ),
             "virality_score": 0,
             "hook_score": 0,
@@ -209,6 +217,7 @@ class VideoService:
         output_format: str = "vertical",
         add_subtitles: bool = True,
         cleanup_settings: Optional[Dict[str, Any]] = None,
+        audio_settings: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Create standalone video clips from segments with optional subtitles.
@@ -234,8 +243,31 @@ class VideoService:
             cleanup_settings,
         )
 
+        for clip_info in clips_info:
+            await VideoService.apply_audio_layers(
+                video_path,
+                Path(clip_info["path"]),
+                clip_info.get("hook_title"),
+                audio_settings,
+            )
+
         logger.info(f"Successfully created {len(clips_info)} clips")
         return clips_info
+
+    @staticmethod
+    async def apply_audio_layers(
+        video_path: Path,
+        clip_path: Path,
+        hook_title: Optional[str],
+        audio_settings: Optional[Dict[str, Any]],
+    ) -> None:
+        """Mix the task's background music / spoken hook into a rendered clip."""
+        if not has_audio_enhancements(audio_settings):
+            return
+        language = (load_cached_transcript_data(video_path) or {}).get("language")
+        await run_in_thread(
+            apply_audio_enhancements, clip_path, audio_settings, hook_title, language
+        )
 
     @staticmethod
     async def create_single_clip(
@@ -250,6 +282,7 @@ class VideoService:
         output_format: str = "vertical",
         add_subtitles: bool = True,
         cleanup_settings: Optional[Dict[str, Any]] = None,
+        audio_settings: Optional[Dict[str, Any]] = None,
     ) -> Optional[Dict[str, Any]]:
         """Render a single clip in the thread pool and return clip_info dict, or None on failure."""
         try:
@@ -311,12 +344,19 @@ class VideoService:
                 output_format,
                 keep_ranges,
                 segment.get("hook_title"),
+                motion_plan={
+                    "level": segment.get("motion_level"),
+                    "callout_words": segment.get("callout_words") or [],
+                },
             )
 
             if not success:
                 logger.error(f"Failed to create clip {clip_index + 1}")
                 return None
 
+            await VideoService.apply_audio_layers(
+                video_path, clip_path, segment.get("hook_title"), audio_settings
+            )
             save_clip_source_ranges(clip_path, keep_ranges)
             cleaned_duration = sum(end - start for start, end in keep_ranges)
             logger.info(
@@ -339,6 +379,8 @@ class VideoService:
                 "shareability_score": segment.get("shareability_score", 0),
                 "hook_type": segment.get("hook_type"),
                 "hook_title": segment.get("hook_title"),
+                "post_caption": segment.get("post_caption"),
+                "hashtags": segment.get("hashtags") or [],
                 "keep_ranges": keep_ranges,
             }
         except Exception as e:
@@ -488,6 +530,7 @@ class VideoService:
                 )
 
             relevant_parts = None
+            visual_highlights: List[Dict[str, Any]] = []
             if cached_analysis_json:
                 try:
                     cached_analysis = json.loads(cached_analysis_json)
@@ -526,6 +569,28 @@ class VideoService:
                 except Exception as exc:
                     logger.warning("Clip signal extraction failed: %s", exc)
                     clip_signals = None
+                try:
+                    trend_signals = format_trend_signals(await run_in_thread(get_trends))
+                except Exception as exc:
+                    logger.warning("Trend lookup failed: %s", exc)
+                    trend_signals = ""
+                if trend_signals:
+                    clip_signals = "\n\n".join(
+                        part for part in (clip_signals, trend_signals) if part
+                    )
+                if visual_highlights_enabled():
+                    if progress_callback:
+                        await progress_callback(
+                            45, "Finding visual highlights...", "processing"
+                        )
+                    visual_highlights = await run_in_thread(
+                        detect_visual_highlights, video_path, file_duration
+                    )
+                    visual_signals = format_visual_signals(visual_highlights)
+                    if visual_signals:
+                        clip_signals = "\n\n".join(
+                            part for part in (clip_signals, visual_signals) if part
+                        )
                 relevant_parts = await VideoService.analyze_transcript(
                     transcript,
                     clip_signals=clip_signals,
@@ -559,6 +624,10 @@ class VideoService:
                         "shareability_score": virality.get("shareability_score", 0),
                         "hook_type": virality.get("hook_type"),
                         "hook_title": segment.get("hook_title"),
+                        "motion_level": segment.get("motion_level"),
+                        "callout_words": segment.get("callout_words") or [],
+                        "post_caption": segment.get("post_caption"),
+                        "hashtags": segment.get("hashtags") or [],
                     }
                 else:
                     virality = segment.virality.model_dump() if segment.virality else {}
@@ -575,6 +644,10 @@ class VideoService:
                         "shareability_score": virality.get("shareability_score", 0),
                         "hook_type": virality.get("hook_type"),
                         "hook_title": getattr(segment, "hook_title", None),
+                        "motion_level": getattr(segment, "motion_level", None),
+                        "callout_words": list(getattr(segment, "callout_words", None) or []),
+                        "post_caption": getattr(segment, "post_caption", None),
+                        "hashtags": list(getattr(segment, "hashtags", None) or []),
                     }
 
                 segment_payload["text"] = VideoService._ground_segment_text(
@@ -583,8 +656,33 @@ class VideoService:
                 )
                 segments_json.append(segment_payload)
 
+            # Visual moments (dance, stunts, reactions) the transcript ranking
+            # did not pick become clips of their own.
+            visual_segments: List[Dict[str, Any]] = []
+            if visual_highlights:
+                visual_segments = build_visual_segments(
+                    visual_highlights,
+                    [
+                        (
+                            parse_timestamp_to_seconds(segment["start_time"]),
+                            parse_timestamp_to_seconds(segment["end_time"]),
+                        )
+                        for segment in segments_json
+                    ],
+                    file_duration,
+                    runtime_config.twelvelabs_max_visual_clips,
+                    runtime_config.twelvelabs_min_highlight_score,
+                )
+            for segment in visual_segments:
+                segment["text"] = VideoService._ground_segment_text(
+                    segment, transcript_data
+                )
+
             if processing_mode == "fast":
-                segments_json = segments_json[: runtime_config.fast_mode_max_clips]
+                max_clips = runtime_config.fast_mode_max_clips
+                visual_segments = visual_segments[: max_clips // 2]
+                segments_json = segments_json[: max_clips - len(visual_segments)]
+            segments_json = segments_json + visual_segments
 
             if not segments_json:
                 logger.warning(

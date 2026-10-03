@@ -135,3 +135,52 @@ def test_llm_validation_rejects_unsupported_or_incomplete_model_names():
         "ollama:", runtime_config
     )
     assert _get_missing_llm_key_error("ollama:gpt-oss:20b", runtime_config) is None
+
+
+def test_prompts_keep_hook_titles_in_spoken_language():
+    assert "Swahili (Kiswahili)" in transcript_analysis_system_prompt
+    assert "Write each \"hook_title\" in the same language" in (
+        transcript_analysis_system_prompt
+    )
+    prompt = build_transcript_analysis_prompt(
+        transcript="[00:12 - 00:21] Habari za leo"
+    )
+    assert "written in the segment's spoken language" in prompt
+    assert "never translate it" in prompt
+
+
+def test_prompts_ask_for_motion_direction():
+    assert "MOTION GRAPHICS DIRECTION" in transcript_analysis_system_prompt
+    assert '"none": emotional, vulnerable or serious moments' in transcript_analysis_system_prompt
+    prompt = build_transcript_analysis_prompt(transcript="[00:12 - 00:21] Nililipoteza milioni 500")
+    assert '"motion_level", "callout_words"' in prompt
+
+
+def test_segment_motion_fields_are_coerced_and_grounded():
+    from src.ai import TranscriptSegment, filter_callout_words
+
+    segment = TranscriptSegment.model_validate(
+        {"start_time": "00:01", "end_time": "00:30", "text": "I lost $500 million in one day",
+         "motion": "HIGH", "keywords": "$500, million, banana, day, lost"}
+    )
+    assert segment.motion_level == "full"
+    assert segment.callout_words == ["$500", "million", "banana"]
+    assert filter_callout_words(segment.callout_words, segment.text) == ["$500", "million"]
+    assert TranscriptSegment.model_validate(
+        {"start_time": "00:01", "end_time": "00:30", "text": "x"}
+    ).motion_level == "subtle"
+
+
+def test_prompts_ask_for_post_caption_and_hashtags():
+    assert "POSTING COPY" in transcript_analysis_system_prompt
+    prompt = build_transcript_analysis_prompt(transcript="[00:12 - 00:21] Habari")
+    assert '"post_caption", "hashtags"' in prompt
+
+
+def test_hashtags_are_normalized():
+    from src.ai import normalize_hashtags
+
+    assert normalize_hashtags("#Tanzania, bongoflava #tanzania  fyp") == [
+        "#Tanzania", "#bongoflava", "#fyp",
+    ]
+    assert normalize_hashtags(["#Simba Yanga", "habari!"]) == ["#SimbaYanga", "#habari"]

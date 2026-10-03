@@ -74,7 +74,7 @@ async def test_process_video_complete_uses_fallback_when_ai_selects_no_segments(
             "relevance_score": 0.25,
             "reasoning": (
                 "AI analysis did not identify a strong standalone segment, "
-                "so SupoClip generated the first available portion of the video."
+                "so Katakata generated the first available portion of the video."
             ),
             "virality_score": 0,
             "hook_score": 0,
@@ -116,3 +116,71 @@ async def test_cached_text_regenerates_missing_word_timings(monkeypatch, tmp_pat
     analysis = json.dumps({"most_relevant_segments": [{"start_time": "00:00", "end_time": "00:17", "text": "Cached segment"}], "summary": "Test", "key_topics": []})
     await VideoService.process_video_complete(url="upload://source.mp4", source_type="video_url", cached_transcript="Cached transcript", cached_analysis_json=analysis)
     transcribe.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_process_video_complete_adds_visual_highlight_clips(monkeypatch, tmp_path):
+    video_path = tmp_path / "source.mp4"
+    video_path.write_bytes(b"placeholder")
+    config = SimpleNamespace(
+        max_video_duration=5400,
+        clip_duration=30,
+        fast_mode_max_clips=4,
+        twelvelabs_max_visual_clips=2,
+        twelvelabs_min_highlight_score=60,
+    )
+    monkeypatch.setattr(video_service_module, "get_config", lambda: config)
+    monkeypatch.setattr(
+        VideoService, "resolve_local_video_path", staticmethod(lambda _url: video_path)
+    )
+    monkeypatch.setattr(VideoService, "_get_file_duration", staticmethod(lambda _path: 600.0))
+
+    async def fake_generate_transcript(_video_path, processing_mode="balanced", source_url=None):
+        return "[00:00 - 00:40] Habari za leo marafiki"
+
+    spoken_segments = [
+        {
+            "start_time": f"0{minute}:00",
+            "end_time": f"0{minute}:30",
+            "text": "Habari za leo marafiki",
+            "virality": {"total_score": 80},
+            "hook_title": "Siri ya leo",
+        }
+        for minute in range(4)
+    ]
+    received_signals = []
+
+    async def fake_analyze_transcript(_transcript, clip_signals=None):
+        received_signals.append(clip_signals)
+        return SimpleNamespace(
+            summary="s", key_topics=[], most_relevant_segments=spoken_segments
+        )
+
+    highlights = [
+        {"start": 300, "end": 320, "score": 95, "description": "Singeli dance", "hook_title": "Ngoma kali"},
+        {"start": 400, "end": 420, "score": 90, "description": "Crowd cheers", "hook_title": None},
+        {"start": 500, "end": 520, "score": 85, "description": "Third", "hook_title": None},
+    ]
+
+    async def fake_run_in_thread(func, *_args, **_kwargs):
+        if func is video_service_module.detect_visual_highlights:
+            return highlights
+        return None
+
+    monkeypatch.setattr(VideoService, "generate_transcript", staticmethod(fake_generate_transcript))
+    monkeypatch.setattr(VideoService, "analyze_transcript", staticmethod(fake_analyze_transcript))
+    monkeypatch.setattr(video_service_module, "run_in_thread", fake_run_in_thread)
+    monkeypatch.setattr(video_service_module, "visual_highlights_enabled", lambda: True)
+
+    result = await VideoService.process_video_complete(
+        url="upload://source.mp4", source_type="video_url", processing_mode="fast"
+    )
+
+    assert "Singeli dance" in received_signals[0]
+    segments = result["segments_to_render"]
+    # Fast mode keeps 4 clips: the top 2 spoken ones plus 2 visual-only ones.
+    assert len(segments) == 4
+    assert [s["hook_type"] for s in segments][-2:] == ["visual", "visual"]
+    assert segments[2]["start_time"] == "05:00"
+    assert segments[2]["hook_title"] == "Ngoma kali"
+    assert "visual" in json.loads(result["analysis_json"])["most_relevant_segments"][2]["hook_type"]

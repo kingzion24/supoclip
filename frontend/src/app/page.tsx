@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 
 import { HomeRouter } from "@/components/home-router";
-import { APP_STORE_URL, getSiteUrl } from "@/lib/site";
+import { APP_STORE_URL, GITHUB_URL, getSiteUrl } from "@/lib/site";
 
 const siteUrl = getSiteUrl();
 
 export const metadata: Metadata = {
   title: {
-    absolute: "SupoClip – Open-Source AI Video Clipper for Shorts",
+    absolute: "Katakata – Open-Source AI Video Clipper for Shorts",
   },
   description:
     "Turn long videos into captioned YouTube Shorts, TikToks, and Reels with open-source AI clipping, virality scoring, and face-aware 9:16 crops.",
@@ -22,16 +22,16 @@ export const metadata: Metadata = {
     "AI clip maker",
   ],
   openGraph: {
-    title: "SupoClip – Open-Source AI Video Clipper for Shorts",
+    title: "Katakata – Open-Source AI Video Clipper for Shorts",
     description:
       "Turn long videos into captioned YouTube Shorts, TikToks, and Reels with open-source AI clipping.",
     url: siteUrl,
-    siteName: "SupoClip",
+    siteName: "Katakata",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "SupoClip – Open-Source AI Video Clipper for Shorts",
+    title: "Katakata – Open-Source AI Video Clipper for Shorts",
     description:
       "Open-source AI clipping, virality scoring, captions, and face-aware vertical crops.",
   },
@@ -41,15 +41,15 @@ const structuredData = [
   {
     "@context": "https://schema.org",
     "@type": "Organization",
-    name: "SupoClip",
+    name: "Katakata",
     url: siteUrl,
     logo: `${siteUrl}/logo.png`,
-    sameAs: ["https://github.com/FujiwaraChoki/supoclip", APP_STORE_URL],
+    sameAs: [GITHUB_URL, ...(APP_STORE_URL ? [APP_STORE_URL] : [])],
   },
   {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
-    name: "SupoClip",
+    name: "Katakata",
     applicationCategory: "MultimediaApplication",
     operatingSystem: "Web, Docker",
     url: siteUrl,
@@ -69,26 +69,26 @@ const structuredData = [
       category: "Self-hosted open-source edition",
     },
   },
-  {
+  ...(APP_STORE_URL ? [{
     "@context": "https://schema.org",
     "@type": "MobileApplication",
-    name: "SupoClip",
+    name: "Katakata",
     applicationCategory: "MultimediaApplication",
     operatingSystem: "iOS",
     url: APP_STORE_URL,
     installUrl: APP_STORE_URL,
     description:
-      "The SupoClip iOS app: clip long videos into captioned vertical shorts from your iPhone.",
+      "The Katakata iOS app: clip long videos into captioned vertical shorts from your iPhone.",
     offers: {
       "@type": "Offer",
       price: "0",
       priceCurrency: "USD",
     },
-  },
+  }] : []),
   {
     "@context": "https://schema.org",
     "@type": "WebSite",
-    name: "SupoClip",
+    name: "Katakata",
     url: siteUrl,
     description: "Open-source AI video clipping for short-form content.",
   },

@@ -27,38 +27,38 @@ class SubscriptionEmailService:
     def _build_subscribed_email(self, user: User) -> EmailContent:
         first_name = self._first_name_for(user)
         return EmailContent(
-            subject="Thanks for subscribing to SupoClip",
+            subject="Thanks for subscribing to Katakata",
             html=(
                 f"<p>Hi {first_name},</p>"
-                "<p>Thanks for subscribing to SupoClip.</p>"
+                "<p>Thanks for subscribing to Katakata.</p>"
                 "<p>Your paid plan is now active, and you can jump back in anytime to create more clips.</p>"
                 "<p>We’re excited to have you with us.</p>"
-                "<p>Team SupoClip</p>"
+                "<p>Team Katakata</p>"
             ),
             text=(
                 f"Hi {first_name},\n\n"
-                "Thanks for subscribing to SupoClip.\n\n"
+                "Thanks for subscribing to Katakata.\n\n"
                 "Your paid plan is now active, and you can jump back in anytime to create more clips.\n\n"
                 "We’re excited to have you with us.\n\n"
-                "Team SupoClip"
+                "Team Katakata"
             ),
         )
 
     def _build_unsubscribed_email(self, user: User) -> EmailContent:
         first_name = self._first_name_for(user)
         return EmailContent(
-            subject="Sorry to see you go from SupoClip",
+            subject="Sorry to see you go from Katakata",
             html=(
                 f"<p>Hi {first_name},</p>"
-                "<p>Sorry to see you go, and thanks for trying SupoClip.</p>"
+                "<p>Sorry to see you go, and thanks for trying Katakata.</p>"
                 "<p>Your subscription has been canceled. If you ever want to come back, we’d love to have you.</p>"
-                "<p>Team SupoClip</p>"
+                "<p>Team Katakata</p>"
             ),
             text=(
                 f"Hi {first_name},\n\n"
-                "Sorry to see you go, and thanks for trying SupoClip.\n\n"
+                "Sorry to see you go, and thanks for trying Katakata.\n\n"
                 "Your subscription has been canceled. If you ever want to come back, we’d love to have you.\n\n"
-                "Team SupoClip"
+                "Team Katakata"
             ),
         )
 
