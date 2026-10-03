@@ -45,11 +45,12 @@ interface CaptionTemplate {
   font_color?: string;
 }
 
-type OutputFormat = "vertical" | "vertical_pan" | "vertical_split" | "original";
+type OutputFormat = "vertical" | "vertical_pan" | "vertical_speaker" | "vertical_split" | "original";
 
 const FRAMINGS: { id: OutputFormat; label: string; hint: string }[] = [
   { id: "vertical", label: "Auto 9:16", hint: "Face-tracked vertical crop" },
-  { id: "vertical_pan", label: "Speaker pan", hint: "Follows whoever is talking" },
+  { id: "vertical_speaker", label: "Speaker cuts", hint: "Cuts to whoever is talking, podcast style" },
+  { id: "vertical_pan", label: "Speaker pan", hint: "Glides to whoever is talking" },
   { id: "vertical_split", label: "Split-screen", hint: "Two speakers stacked" },
   { id: "original", label: "Original", hint: "Keep the source aspect ratio" },
 ];
@@ -814,6 +815,10 @@ function FramingGlyph({ kind }: { kind: OutputFormat }) {
     <span className="flex h-12 items-center justify-center rounded-lg bg-muted" aria-hidden>
       {kind === "original" ? (
         <span className="h-6 w-10 rounded-[3px] border-2 border-foreground/70" />
+      ) : kind === "vertical_speaker" ? (
+        <span className="flex h-9 w-5 flex-col items-center justify-center gap-1 rounded-[3px] border-2 border-foreground/70">
+          <span className="size-1.5 rounded-full bg-brand" /><span className="size-1.5 rounded-full bg-foreground/30" />
+        </span>
       ) : kind === "vertical_split" ? (
         <span className="flex h-9 w-5 flex-col gap-0.5 rounded-[3px] border-2 border-foreground/70 p-0.5"><span className="flex-1 rounded-[1px] bg-foreground/30" /><span className="flex-1 rounded-[1px] bg-foreground/30" /></span>
       ) : (

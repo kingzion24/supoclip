@@ -26,6 +26,7 @@ from .common import (
     logger,
 )
 from .motion_graphics import punch_zoom_fragment
+from .speaker_cuts import build_cut_expression, plan_speaker_cuts
 from .ffmpeg import (
     build_audio_output_args,
     build_final_video_encode_args,
@@ -590,8 +591,14 @@ def build_pan_expression(
 def detect_speaker_reframe_plan(
     clip_path: Path,
     output_format: str,
+    speaker_words: Optional[List[Dict[str, Any]]] = None,
 ) -> Optional[Dict[str, Any]]:
-    """Build a speaker-aware pan or split-screen plan for a trimmed clip."""
+    """Build a speaker-aware pan, cut or split-screen plan for a trimmed clip.
+
+    ``vertical_speaker`` cuts to whoever is talking, using the transcript's
+    speaker labels (``speaker_words``, in clip time) when available and face
+    motion otherwise. ``vertical_pan`` glides between speakers.
+    """
     try:
         width, height = ffprobe_video_size(clip_path)
         if width / max(height, 1) <= 1.2:
@@ -667,21 +674,39 @@ def detect_speaker_reframe_plan(
                 return None
             times, left_values = parse_motion_metadata(left_motion)
             _, right_values = parse_motion_metadata(right_motion)
-            timeline = build_speaker_timeline_from_motion(
-                times,
-                left_values,
-                right_values,
-            )
+            cut_plan = None
+            if output_format == "vertical_speaker" and speaker_words:
+                cut_plan = plan_speaker_cuts(
+                    speaker_words, duration, times, left_values, right_values
+                )
+            if cut_plan:
+                timeline, mapping = cut_plan
+                logger.info(
+                    "Speaker cuts from diarization: %d shots, speakers %s",
+                    len(timeline),
+                    mapping,
+                )
+            else:
+                timeline = build_speaker_timeline_from_motion(
+                    times,
+                    left_values,
+                    right_values,
+                )
             if len(timeline) < 2:
                 return None
 
+        x_expression = (
+            build_cut_expression(timeline, left_x, right_x)
+            if output_format == "vertical_speaker"
+            else build_pan_expression(timeline, left_x, right_x)
+        )
         return {
             "mode": "pan",
             "width": width,
             "height": height,
             "crop_w": crop_w,
             "crop_h": height,
-            "x_expression": build_pan_expression(timeline, left_x, right_x),
+            "x_expression": x_expression,
             "timeline": timeline,
         }
     except Exception as exc:
@@ -1239,6 +1264,7 @@ def render_reframed_clip_ffmpeg(
     subtitle_ass_path: Optional[Path] = None,
     fonts_dir: Optional[Path] = None,
     punch_times: Optional[List[float]] = None,
+    speaker_words: Optional[List[Dict[str, Any]]] = None,
 ) -> Tuple[bool, int, int]:
     """Render the final framed clip and (optionally) burn subtitles in one pass.
 
@@ -1279,8 +1305,8 @@ def render_reframed_clip_ffmpeg(
         return run_ffmpeg_command(command).returncode == 0, out_w, out_h
 
     plan = (
-        detect_speaker_reframe_plan(input_path, output_format)
-        if output_format in {"vertical_pan", "vertical_split"}
+        detect_speaker_reframe_plan(input_path, output_format, speaker_words)
+        if output_format in {"vertical_pan", "vertical_speaker", "vertical_split"}
         else None
     )
 

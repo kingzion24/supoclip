@@ -87,6 +87,7 @@ utils/               → Thread pool helpers for blocking operations (async_help
 3. **AI Analysis** → Pydantic AI selects 3-7 viral segments (10-45s each) with virality scoring. With `TWELVELABS_API_KEY`, `visual_highlights.py` also uploads a 360p proxy to TwelveLabs Pegasus; its highlights are fed to the prompt as signals and missed ones become `hook_type="visual"` clips
 4. **Clip Generation** → MoviePy creates 9:16 clips with:
    - Face-centered cropping: MediaPipe → OpenCV DNN → Haar cascade (fallback chain)
+   - Framings: `vertical` (face-tracked), `vertical_speaker` (Speaker cuts: hard cuts to whoever is talking, from AssemblyAI speaker labels mapped to faces by face motion, `media/speaker_cuts.py`), `vertical_pan` (glides between speakers by face motion), `vertical_split`, `original`. Speaker modes need a wide two-person shot with ≤2 scene cuts, else they fall back to `vertical`
    - Word-synced subtitles from AssemblyAI
    - Custom fonts (TTF files in `backend/fonts/`)
    - Optional transition effects (`backend/transitions/`)

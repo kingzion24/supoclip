@@ -363,6 +363,14 @@ def create_optimized_clip(
                 subtitle_ass_path=burn_ass_path,
                 fonts_dir=fonts_dir,
                 punch_times=motion_beats,
+                speaker_words=(
+                    get_words_for_keep_ranges(
+                        load_cached_transcript_data(video_path) or {},
+                        effective_keep_ranges,
+                    )
+                    if reframe_format == "vertical_speaker"
+                    else None
+                ),
             )
             if not framed_ok:
                 raise RuntimeError("ffmpeg reframe render failed")
