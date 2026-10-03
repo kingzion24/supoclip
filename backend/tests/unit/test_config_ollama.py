@@ -46,3 +46,27 @@ def test_transcription_language_defaults_to_auto_detect(monkeypatch):
 
     monkeypatch.setenv("TRANSCRIPTION_LANGUAGE", "en-US")
     assert Config().transcription_language == "en_us"
+
+
+def test_worker_job_timeout_scales_with_longest_video(monkeypatch):
+    monkeypatch.delenv("WORKER_JOB_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("SCALE_YOUTUBE_MAX_VIDEO_DURATION", raising=False)
+    monkeypatch.setenv("MAX_VIDEO_DURATION", "5400")
+    assert Config().worker_job_timeout_seconds == 21600
+
+    monkeypatch.setenv("MAX_VIDEO_DURATION", "18000")  # 5-hour videos
+    assert Config().worker_job_timeout_seconds == 36000
+
+    monkeypatch.setenv("WORKER_JOB_TIMEOUT_SECONDS", "")  # empty from Compose
+    assert Config().worker_job_timeout_seconds == 36000
+    monkeypatch.setenv("WORKER_JOB_TIMEOUT_SECONDS", "7200")
+    assert Config().worker_job_timeout_seconds == 7200
+
+
+def test_assemblyai_wait_grows_for_long_recordings(monkeypatch, tmp_path):
+    from src.media import transcription
+
+    monkeypatch.setattr(transcription, "ffprobe_duration", lambda path: 5 * 3600)
+    assert transcription._assemblyai_wait_seconds(tmp_path / "a.mp3", 900) == 9000
+    monkeypatch.setattr(transcription, "ffprobe_duration", lambda path: 600)
+    assert transcription._assemblyai_wait_seconds(tmp_path / "a.mp3", 900) == 900

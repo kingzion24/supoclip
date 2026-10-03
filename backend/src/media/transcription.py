@@ -26,6 +26,7 @@ from .common import (
     logger,
 )
 from .ffmpeg import (
+    ffprobe_duration,
     run_ffmpeg_command,
 )
 
@@ -195,6 +196,16 @@ def _assemblyai_language_options(
     if _base_language(language) not in _UNIVERSAL_3_PRO_LANGUAGES:
         speech_models = ["universal-2"]
     return {"language_code": language, "speech_models": speech_models}
+
+
+def _assemblyai_wait_seconds(media_path: Path, configured_seconds: int) -> int:
+    """How long to wait for a transcript: the configured budget, or longer for
+    long recordings (half the audio length, so a 5-hour video gets 2.5 hours)."""
+    try:
+        audio_seconds = ffprobe_duration(media_path)
+    except Exception:
+        return configured_seconds
+    return max(configured_seconds, int(audio_seconds / 2))
 
 
 def _get_whisper_model(model_name: str = "base"):
@@ -406,7 +417,9 @@ def _get_transcript_with_assemblyai(
             transcriber,
             transcription_media_path,
             config_obj,
-            runtime_config.assembly_ai_http_timeout_seconds,
+            _assemblyai_wait_seconds(
+                transcription_media_path, runtime_config.assembly_ai_http_timeout_seconds
+            ),
         )
 
         if transcript is None:
