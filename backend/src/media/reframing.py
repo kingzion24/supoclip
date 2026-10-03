@@ -25,6 +25,7 @@ from .common import (
     OUTPUT_FPS,
     logger,
 )
+from .face_detection import create_face_detector
 from .motion_graphics import punch_zoom_fragment
 from .speaker_cuts import build_cut_expression, plan_speaker_cuts
 from .ffmpeg import (
@@ -167,19 +168,9 @@ def detect_faces_in_clip(
 
     try:
         # Try to use MediaPipe (most accurate)
-        mp_face_detection = None
-        try:
-            import mediapipe as mp
-
-            mp_face_detection = mp.solutions.face_detection.FaceDetection(
-                model_selection=0,  # 0 for short-range (better for close faces)
-                min_detection_confidence=0.5,
-            )
+        mp_face_detection = create_face_detector(model_selection=0)
+        if mp_face_detection is not None:
             logger.info("Using MediaPipe face detector")
-        except ImportError:
-            logger.info("MediaPipe not available, falling back to OpenCV")
-        except Exception as e:
-            logger.warning(f"MediaPipe face detector failed to initialize: {e}")
 
         # Initialize OpenCV face detectors as fallback
         haar_cascade = cv2.CascadeClassifier(
@@ -734,15 +725,7 @@ def compute_vertical_crop_dims(
 
 def _open_face_detectors():
     """Initialise the MediaPipe (preferred) + Haar (fallback) face detectors."""
-    mp_face = None
-    try:
-        import mediapipe as mp
-
-        mp_face = mp.solutions.face_detection.FaceDetection(
-            model_selection=1, min_detection_confidence=0.5
-        )
-    except Exception as exc:
-        logger.info("MediaPipe unavailable (%s); using Haar", exc)
+    mp_face = create_face_detector(model_selection=1)
     haar = cv2.CascadeClassifier(
         cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
     )
