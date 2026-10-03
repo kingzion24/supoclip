@@ -84,7 +84,7 @@ utils/               → Thread pool helpers for blocking operations (async_help
 
 1. **Input** → YouTube URL (yt-dlp) or uploaded file
 2. **Transcription** → AssemblyAI word-level timestamps (cached as `.transcript_cache.json`); spoken language is auto-detected (Swahili routes to `universal-2`) unless `TRANSCRIPTION_LANGUAGE` pins it
-3. **AI Analysis** → Pydantic AI selects 3-7 viral segments (10-45s each) with virality scoring. With `TWELVELABS_API_KEY`, `visual_highlights.py` also uploads a 360p proxy to TwelveLabs Pegasus; its highlights are fed to the prompt as signals and missed ones become `hook_type="visual"` clips
+3. **AI Analysis** → current trends for `TRENDS_REGION` (default TZ; `trends.py`: Google Trends RSS + YouTube most-popular when a YouTube Data API key is set, cached 1h, fail-soft) are added to the prompt signals; each segment also gets a `post_caption` and 3-8 `hashtags` (stored on `generated_clips`). Pydantic AI selects 3-7 viral segments (10-45s each) with virality scoring. With `TWELVELABS_API_KEY`, `visual_highlights.py` also uploads a 360p proxy to TwelveLabs Pegasus; its highlights are fed to the prompt as signals and missed ones become `hook_type="visual"` clips
 4. **Clip Generation** → MoviePy creates 9:16 clips with:
    - Face-centered cropping: MediaPipe → OpenCV DNN → Haar cascade (fallback chain). `media/face_detection.py` uses the legacy `mp.solutions` API when present, else the MediaPipe Tasks `FaceDetector` with the bundled full-range BlazeFace model (`media/models/`), scanning wide frames in square tiles so small faces in two-shots are found
    - Framings: `vertical` (face-tracked), `vertical_speaker` (Speaker cuts: hard cuts to whoever is talking, from AssemblyAI speaker labels mapped to faces by face motion, `media/speaker_cuts.py`), `vertical_pan` (glides between speakers by face motion), `vertical_split`, `original`. Speaker modes need a wide two-person shot with ≤2 scene cuts, else they fall back to `vertical`
@@ -156,6 +156,7 @@ PostgreSQL 15. Schema in `init.sql`. Mixed naming conventions:
 
 **Media:**
 - `GET /fonts`, `GET /transitions`, `GET /caption-templates`, `GET /broll/status`, `GET /music` (tracks + TTS voices)
+- `GET /discover/trending?region=TZ`, `GET /discover/search?q=&kind=videos|podcasts&min_minutes=` — Discover page (`discover.py`, yt-dlp search, no key); "Clip this" opens `/?url=<video>`
 - `POST /upload` — Upload video file
 - `GET /clips/{filename}` — Serve generated clips
 

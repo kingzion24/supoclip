@@ -189,6 +189,12 @@ export default function HomeApp() {
       .catch((error) => console.error("Failed to load music tracks:", error));
   }, []);
 
+  // "Clip this" on the Discover page links here with ?url=<video>.
+  useEffect(() => {
+    const sharedUrl = new URLSearchParams(window.location.search).get("url");
+    if (sharedUrl && /^https:\/\/(www\.)?(youtube\.com|youtu\.be)\//.test(sharedUrl)) setUrl(sharedUrl);
+  }, []);
+
   // Restore the options used last time (per browser, best effort).
   useEffect(() => {
     const saved = loadSavedSettings();

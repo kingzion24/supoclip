@@ -174,6 +174,8 @@ class ClipEditingMixin:
                         "shareability_score": clip.get("shareability_score", 0),
                         "hook_type": clip.get("hook_type"),
                         "hook_title": clip.get("hook_title"),
+                        "post_caption": clip.get("post_caption"),
+                        "hashtags": clip.get("hashtags") or [],
                     }
                 )
 
@@ -217,6 +219,8 @@ class ClipEditingMixin:
                 shareability_score=clip_info.get("shareability_score", 0),
                 hook_type=clip_info.get("hook_type"),
                 hook_title=clip_info.get("hook_title"),
+                post_caption=clip_info.get("post_caption"),
+                hashtags=clip_info.get("hashtags"),
             )
             clip_ids.append(clip_id)
 

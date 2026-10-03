@@ -169,3 +169,18 @@ def test_segment_motion_fields_are_coerced_and_grounded():
     assert TranscriptSegment.model_validate(
         {"start_time": "00:01", "end_time": "00:30", "text": "x"}
     ).motion_level == "subtle"
+
+
+def test_prompts_ask_for_post_caption_and_hashtags():
+    assert "POSTING COPY" in transcript_analysis_system_prompt
+    prompt = build_transcript_analysis_prompt(transcript="[00:12 - 00:21] Habari")
+    assert '"post_caption", "hashtags"' in prompt
+
+
+def test_hashtags_are_normalized():
+    from src.ai import normalize_hashtags
+
+    assert normalize_hashtags("#Tanzania, bongoflava #tanzania  fyp") == [
+        "#Tanzania", "#bongoflava", "#fyp",
+    ]
+    assert normalize_hashtags(["#Simba Yanga", "habari!"]) == ["#SimbaYanga", "#habari"]

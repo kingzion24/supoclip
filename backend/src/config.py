@@ -35,6 +35,9 @@ class Config:
         )
         self.pexels_api_key = self._get_runtime_setting("PEXELS_API_KEY")
         self.pixabay_api_key = self._get_optional_env("PIXABAY_API_KEY")
+        # Country whose current trends steer clip picking, captions and hashtags
+        # (ISO code, e.g. TZ). Set TRENDS_REGION= (empty) to turn trends off.
+        self.trends_region = os.getenv("TRENDS_REGION", "TZ").strip().upper()
         # Optional TwelveLabs video understanding: finds visual highlights
         # (dance, action, reactions) that a transcript cannot see.
         self.twelvelabs_api_key = self._get_optional_env("TWELVELABS_API_KEY")

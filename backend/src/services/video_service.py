@@ -38,6 +38,7 @@ from ..clip_source_map import (
 )
 from ..ai import get_most_relevant_parts_by_transcript
 from ..media.audio_enhancements import apply_audio_enhancements, has_audio_enhancements
+from ..trends import format_trend_signals, get_trends
 from ..visual_highlights import (
     build_visual_segments,
     detect_visual_highlights,
@@ -378,6 +379,8 @@ class VideoService:
                 "shareability_score": segment.get("shareability_score", 0),
                 "hook_type": segment.get("hook_type"),
                 "hook_title": segment.get("hook_title"),
+                "post_caption": segment.get("post_caption"),
+                "hashtags": segment.get("hashtags") or [],
                 "keep_ranges": keep_ranges,
             }
         except Exception as e:
@@ -566,6 +569,15 @@ class VideoService:
                 except Exception as exc:
                     logger.warning("Clip signal extraction failed: %s", exc)
                     clip_signals = None
+                try:
+                    trend_signals = format_trend_signals(await run_in_thread(get_trends))
+                except Exception as exc:
+                    logger.warning("Trend lookup failed: %s", exc)
+                    trend_signals = ""
+                if trend_signals:
+                    clip_signals = "\n\n".join(
+                        part for part in (clip_signals, trend_signals) if part
+                    )
                 if visual_highlights_enabled():
                     if progress_callback:
                         await progress_callback(
@@ -614,6 +626,8 @@ class VideoService:
                         "hook_title": segment.get("hook_title"),
                         "motion_level": segment.get("motion_level"),
                         "callout_words": segment.get("callout_words") or [],
+                        "post_caption": segment.get("post_caption"),
+                        "hashtags": segment.get("hashtags") or [],
                     }
                 else:
                     virality = segment.virality.model_dump() if segment.virality else {}
@@ -632,6 +646,8 @@ class VideoService:
                         "hook_title": getattr(segment, "hook_title", None),
                         "motion_level": getattr(segment, "motion_level", None),
                         "callout_words": list(getattr(segment, "callout_words", None) or []),
+                        "post_caption": getattr(segment, "post_caption", None),
+                        "hashtags": list(getattr(segment, "hashtags", None) or []),
                     }
 
                 segment_payload["text"] = VideoService._ground_segment_text(

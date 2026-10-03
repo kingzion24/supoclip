@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
-  AudioLines, Check, ChevronLeft, ChevronRight, Clapperboard, Download, Flame, Loader2, MessageSquare,
+  AudioLines, Check, ChevronLeft, ChevronRight, Clapperboard, Copy, Download, Flame, Hash, Loader2, MessageSquare,
   Play, Scissors, Share2, Sparkles, Star, Trash2, TrendingUp,
 } from "lucide-react";
 import { ClipCover, ScoreRing } from "@/components/app/clip-cover";
@@ -32,6 +32,41 @@ export interface WallClip {
   shareability_score: number;
   hook_type: string | null;
   hook_title: string | null;
+  post_caption?: string | null;
+  hashtags?: string[];
+}
+
+/** Ready-to-paste caption and hashtags for posting the clip. */
+function PostCopy({ clip }: { clip: WallClip }) {
+  const [copied, setCopied] = useState(false);
+  const hashtags = clip.hashtags ?? [];
+  const text = [clip.post_caption, hashtags.join(" ")].filter(Boolean).join("\n\n");
+  if (!text) return null;
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  };
+  return (
+    <section className="rounded-xl border p-4">
+      <div className="mb-2 flex items-center justify-between">
+        <p className="flex items-center gap-1.5 text-sm font-semibold"><Hash className="size-4" />Post caption</p>
+        <Button size="sm" variant="ghost" className="h-7" onClick={copy}>
+          {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}{copied ? "Copied" : "Copy"}
+        </Button>
+      </div>
+      {clip.post_caption && <p className="whitespace-pre-line text-sm">{clip.post_caption}</p>}
+      {hashtags.length > 0 && (
+        <p className="mt-2 flex flex-wrap gap-1.5">
+          {hashtags.map((tag) => <span key={tag} className="rounded-full bg-muted px-2 py-0.5 text-xs">{tag}</span>)}
+        </p>
+      )}
+    </section>
+  );
 }
 
 function clipTitle(clip: WallClip) {
@@ -182,6 +217,8 @@ export function ClipFocus({ clip, taskId, index, total, busy, editable, onNaviga
                     </div>}
                   </section>
                 )}
+
+                <PostCopy key={clip.id} clip={clip} />
 
                 {clip.text && <TranscriptPreview text={clip.text} clipTitle={clipTitle(clip)} />}
               </div>

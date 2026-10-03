@@ -490,6 +490,8 @@ def create_clips_from_segments(
                     "shareability_score": segment.get("shareability_score", 0),
                     "hook_type": segment.get("hook_type"),
                     "hook_title": segment.get("hook_title"),
+                    "post_caption": segment.get("post_caption"),
+                    "hashtags": segment.get("hashtags") or [],
                     "keep_ranges": keep_ranges,
                 }
                 clips_info.append(clip_info)

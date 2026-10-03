@@ -36,6 +36,8 @@ TRANSIENT_MODEL_STATUS_CODES = {408, 429, 500, 502, 503, 504, 529}
 HOOK_TITLE_MAX_CHARS = 64
 HOOK_TITLE_MAX_WORDS = 10
 MAX_CALLOUT_WORDS = 3
+MAX_HASHTAGS = 8
+POST_CAPTION_MAX_CHARS = 300
 TRANSCRIPT_SPAN_RE = re.compile(
     r"^\[(?P<start>\d{1,2}:\d{2}(?::\d{2})?)\s*-\s*"
     r"(?P<end>\d{1,2}:\d{2}(?::\d{2})?)\]\s*(?P<text>.*)$"
@@ -187,6 +189,29 @@ class TranscriptSegment(BaseModel):
         description="Up to 3 words spoken in the segment to pop up on screen.",
     )
 
+    post_caption: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("post_caption", "caption", "description"),
+        description="Ready-to-post caption for TikTok/Reels/Shorts, in the clip's language.",
+    )
+    hashtags: List[str] = Field(
+        default_factory=list,
+        description="3-8 hashtags for posting the clip, without spaces.",
+    )
+
+    @field_validator("hashtags", mode="before")
+    @classmethod
+    def _coerce_hashtags(cls, value: Any) -> List[str]:
+        return normalize_hashtags(value)
+
+    @field_validator("post_caption", mode="before")
+    @classmethod
+    def _coerce_post_caption(cls, value: Any) -> Optional[str]:
+        if value is None:
+            return None
+        text = " ".join(str(value).split())
+        return text[:POST_CAPTION_MAX_CHARS] or None
+
     @field_validator("motion_level", mode="before")
     @classmethod
     def _coerce_motion_level(cls, value: Any) -> str:
@@ -276,7 +301,7 @@ OUTPUT CONTRACT:
 - Return valid JSON only. Do not output Markdown, headings, bullets, prose, code fences, explanations, or commentary outside the JSON object.
 - The top-level JSON object must include: "most_relevant_segments", "summary", and "key_topics".
 - Set "broll_opportunities" to null when B-roll was not requested.
-- Each item in "most_relevant_segments" must include: "start_time", "end_time", "text", "relevance_score", "reasoning", "virality", "hook_title", "motion_level", and "callout_words".
+- Each item in "most_relevant_segments" must include: "start_time", "end_time", "text", "relevance_score", "reasoning", "virality", "hook_title", "motion_level", "callout_words", "post_caption", and "hashtags".
 - Do not use "segment" as an output field. Use "text".
 - "virality" must include: "hook_score", "engagement_score", "value_score", "shareability_score", "total_score", "hook_type", and "virality_reasoning".
 - Every returned segment must be 15-60 seconds long. Prefer 25-50 seconds.
@@ -367,6 +392,10 @@ Edit like the best podcast clip channels (The Diary of a CEO): the conversation 
 - "subtle": most clips. Insight, advice, explanation, an interesting story told calmly. A couple of keyword pop-ups, nothing flashy.
 - "full": high-energy moments: hard numbers and statistics, money, lists of steps, bold contrarian claims, heated debate, hype, comedy beats. Big keyword pop-ups with camera punch-ins.
 - "callout_words": 0-3 single words copied exactly from the segment that carry the meaning (a number, a striking noun, the key verb). Use [] when motion_level is "none". Never invent words.
+
+POSTING COPY ("post_caption" and "hashtags" per segment):
+- "post_caption": 1-2 short sentences to post with the clip on TikTok, Instagram Reels and YouTube Shorts, in the language the segment is spoken in. Tease the payoff without giving it away; end with a question or call to comment when it fits. No hashtags inside the caption.
+- "hashtags": 3-8 hashtags without spaces: mix 1-2 broad reach tags, 2-3 tags for the clip's topic, and the hashtag of a current trend only when the clip genuinely relates to it. Use the clip's language for topic tags (e.g. Swahili tags for Swahili clips).
 
 HOOK TYPES to identify:
 - "question": Opens with a question that creates curiosity
@@ -601,8 +630,9 @@ JSON-only output requirements:
 - Return one valid JSON object and nothing else.
 - No Markdown, headings, bullets, code fences, or explanatory text outside JSON.
 - Top-level keys: "most_relevant_segments", "summary", "key_topics", "broll_opportunities".{' Set "broll_opportunities" to null.' if not include_broll else ''}
-- Segment keys: "start_time", "end_time", "text", "relevance_score", "reasoning", "virality", "hook_title", "motion_level", "callout_words".
+- Segment keys: "start_time", "end_time", "text", "relevance_score", "reasoning", "virality", "hook_title", "motion_level", "callout_words", "post_caption", "hashtags".
 - "motion_level" is "none" (emotional/serious), "subtle" (most clips) or "full" (numbers, lists, high energy); "callout_words" lists 0-3 words copied exactly from the segment.
+- "post_caption" is a short caption to post with the clip, in its spoken language; "hashtags" lists 3-8 hashtags (trend tags only when relevant).
 - "hook_title" is a 3-9 word plain-text headline for the clip, grounded in the segment (no hashtags, emojis, or quotes), written in the segment's spoken language.
 - Keep "text" in the transcript's original language; never translate it.
 - Virality keys: "hook_score", "engagement_score", "value_score", "shareability_score", "total_score", "hook_type", "virality_reasoning".
@@ -610,6 +640,22 @@ JSON-only output requirements:
 
 Transcript:
 {transcript}"""
+
+
+def normalize_hashtags(value: Any) -> List[str]:
+    """Turn the model's hashtags (list or string) into unique '#tag' strings."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        value = value.replace(",", " ").split()
+    if not isinstance(value, list):
+        return []
+    tags: List[str] = []
+    for item in value:
+        tag = re.sub(r"[^\w]", "", str(item), flags=re.UNICODE)
+        if tag and f"#{tag}".lower() not in [t.lower() for t in tags]:
+            tags.append(f"#{tag}")
+    return tags[:MAX_HASHTAGS]
 
 
 def filter_callout_words(words: List[str], segment_text: str) -> List[str]:
