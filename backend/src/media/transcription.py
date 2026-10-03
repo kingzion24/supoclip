@@ -26,6 +26,7 @@ from .common import (
     logger,
 )
 from .ffmpeg import (
+    ffprobe_duration,
     run_ffmpeg_command,
 )
 
@@ -72,24 +73,31 @@ def _prepare_audio_for_transcription(video_path: Path) -> Path:
     return audio_path
 
 
-def _submit_and_wait_for_assemblyai_transcript(
-    transcriber,
-    media_path: Path,
-    config_obj,
-    timeout_seconds: int,
-):
-    """Submit a transcript job and poll with a total timeout."""
-    # Uploads are safe to retry: they do not create a paid transcript. Keep the
-    # transcript POST outside this loop because a timeout may hide its success.
+def _upload_for_assemblyai(transcriber, media_path: Path) -> str:
+    """Upload audio, retrying transport errors (uploads are never billed)."""
     for attempt in range(1, 4):
         try:
-            audio_url = transcriber.upload_file(str(media_path))
-            break
+            return transcriber.upload_file(str(media_path))
         except httpx.TransportError:
             if attempt == 3:
                 raise
             logger.warning("AssemblyAI audio upload failed; retrying upload (%s/3)", attempt)
             time.sleep(2.0)
+    raise RuntimeError("AssemblyAI upload failed")
+
+
+def _submit_and_wait_for_assemblyai_transcript(
+    transcriber,
+    media_path: Path,
+    config_obj,
+    timeout_seconds: int,
+    audio_url: Optional[str] = None,
+):
+    """Submit a transcript job and poll with a total timeout."""
+    # Keep the transcript POST outside any retry loop because a timeout may
+    # hide its success and a second POST would be a second paid job.
+    if audio_url is None:
+        audio_url = _upload_for_assemblyai(transcriber, media_path)
     submitted = transcriber.submit(audio_url, config=config_obj)
     if not submitted.id:
         raise RuntimeError("AssemblyAI did not return a transcript ID")
@@ -163,8 +171,30 @@ def _assemblyai_speech_models_value(speech_model: str) -> List[str]:
     if normalized in {"nano", "universal-2"}:
         return ["universal-2"]
     # "best", "universal", "universal-3-pro", slam variants, and anything else
-    # default to the highest-quality model with a cheaper fallback.
-    return ["universal-3-pro", "universal-2"]
+    # default to the highest-quality model; AssemblyAI routes languages it does
+    # not cover (e.g. Swahili) to universal-2.
+    return ["universal-3-5-pro", "universal-2"]
+
+
+def _assemblyai_attempts(speech_models: List[str]) -> List[Dict[str, Any]]:
+    """Request variants to try in order when AssemblyAI rejects a request.
+
+    Model names change over time (universal-3-pro -> universal-3-5-pro) and some
+    features are not offered for every language, so a rejected request is
+    retried with older models, then universal-2 alone (99 languages), then
+    without speaker labels. Rejected or errored transcripts are not billed.
+    """
+    attempts: List[Dict[str, Any]] = []
+    for models, speakers in (
+        (speech_models, True),
+        (["universal-3-pro", "universal-2"] if "universal-3-5-pro" in speech_models else speech_models, True),
+        (["universal-2"], True),
+        (["universal-2"], False),
+    ):
+        attempt = {"speech_models": list(models), "speaker_labels": speakers}
+        if attempt not in attempts:
+            attempts.append(attempt)
+    return attempts
 
 
 # Languages ``universal-3-pro`` transcribes. Anything else (e.g. Swahili) is
@@ -195,6 +225,16 @@ def _assemblyai_language_options(
     if _base_language(language) not in _UNIVERSAL_3_PRO_LANGUAGES:
         speech_models = ["universal-2"]
     return {"language_code": language, "speech_models": speech_models}
+
+
+def _assemblyai_wait_seconds(media_path: Path, configured_seconds: int) -> int:
+    """How long to wait for a transcript: the configured budget, or longer for
+    long recordings (half the audio length, so a 5-hour video gets 2.5 hours)."""
+    try:
+        audio_seconds = ffprobe_duration(media_path)
+    except Exception:
+        return configured_seconds
+    return max(configured_seconds, int(audio_seconds / 2))
 
 
 def _get_whisper_model(model_name: str = "base"):
@@ -388,33 +428,58 @@ def _get_transcript_with_assemblyai(
     # `best`/`nano`/`universal` values were deprecated server-side.
     speech_models_value = _assemblyai_speech_models_value(speech_model)
 
-    config_obj = aai.TranscriptionConfig(
-        speaker_labels=True,
-        punctuate=True,
-        format_text=True,
-        **_assemblyai_language_options(
-            runtime_config.transcription_language, speech_models_value
-        ),
-    )
-
     try:
         logger.info("Starting AssemblyAI transcription")
         transcription_media_path = _prepare_audio_for_transcription(video_path)
-        # Once submitted, a polling timeout must not submit another paid job or
-        # restart the full transcription budget. Retry status GETs above instead.
-        transcript = _submit_and_wait_for_assemblyai_transcript(
-            transcriber,
-            transcription_media_path,
-            config_obj,
-            runtime_config.assembly_ai_http_timeout_seconds,
+        wait_seconds = _assemblyai_wait_seconds(
+            transcription_media_path, runtime_config.assembly_ai_http_timeout_seconds
         )
+        transcript = None
+        errors: List[str] = []
+        audio_url = _upload_for_assemblyai(transcriber, transcription_media_path)
+        for attempt in _assemblyai_attempts(speech_models_value):
+            language_options = _assemblyai_language_options(
+                runtime_config.transcription_language, attempt["speech_models"]
+            )
+            config_obj = aai.TranscriptionConfig(
+                speaker_labels=attempt["speaker_labels"],
+                punctuate=True,
+                format_text=True,
+                **language_options,
+            )
+            try:
+                # Once submitted, a polling timeout must not submit another paid
+                # job; TimeoutError propagates instead of trying the next variant.
+                transcript = _submit_and_wait_for_assemblyai_transcript(
+                    transcriber,
+                    transcription_media_path,
+                    config_obj,
+                    wait_seconds,
+                    audio_url=audio_url,
+                )
+            except aai.types.TranscriptError as exc:
+                # A bad API key or exhausted account will not succeed on retry.
+                if getattr(exc, "status_code", None) in (401, 402, 403):
+                    raise RuntimeError(f"Transcription failed: {exc}") from exc
+                transcript = None
+                error = str(exc)
+            else:
+                if transcript is None:
+                    raise RuntimeError("AssemblyAI transcription did not return a transcript")
+                if transcript.status != aai.TranscriptStatus.error:
+                    break
+                error = str(transcript.error)
+            errors.append(error)
+            logger.warning(
+                "AssemblyAI rejected the request (models=%s, speaker_labels=%s): %s",
+                language_options["speech_models"],
+                attempt["speaker_labels"],
+                error,
+            )
+            transcript = None
 
         if transcript is None:
-            raise RuntimeError("AssemblyAI transcription did not return a transcript")
-
-        if transcript.status == aai.TranscriptStatus.error:
-            logger.error(f"AssemblyAI transcription failed: {transcript.error}")
-            raise Exception(f"Transcription failed: {transcript.error}")
+            raise RuntimeError(f"Transcription failed: {errors[-1] if errors else 'unknown error'}")
 
         detected_language = (getattr(transcript, "json_response", None) or {}).get(
             "language_code"
@@ -423,6 +488,11 @@ def _get_transcript_with_assemblyai(
             logger.info("AssemblyAI transcript language: %s", detected_language)
 
         formatted_lines = format_transcript_for_analysis(transcript)
+        if not formatted_lines:
+            raise RuntimeError(
+                "Transcription found no speech in this video. Check that it has "
+                "audible speech, or set TRANSCRIPTION_LANGUAGE (e.g. sw) in .env."
+            )
         cache_transcript_data(video_path, transcript)
 
         result = "\n".join(formatted_lines)

@@ -98,6 +98,17 @@ class Config:
         )
 
         self.max_video_duration = int(os.getenv("MAX_VIDEO_DURATION", "5400"))
+        # How long one video job may run before the worker gives up. Defaults
+        # to twice the longest allowed video (at least 3 hours) so raising
+        # MAX_VIDEO_DURATION for long recordings needs no second setting.
+        self.worker_job_timeout_seconds = int(
+            os.getenv("WORKER_JOB_TIMEOUT_SECONDS", "").strip()
+            or max(
+                10800,
+                2 * self.max_video_duration,
+                2 * int(os.getenv("SCALE_YOUTUBE_MAX_VIDEO_DURATION") or "10800"),
+            )
+        )
         # YouTube sources can be longer on paid tiers. Uploads continue to use
         # max_video_duration regardless of plan.
         self.pro_youtube_max_video_duration = int(

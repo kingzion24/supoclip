@@ -176,25 +176,25 @@ class VideoUtilsDiarizationTests(unittest.TestCase):
             video_utils._assemblyai_speech_models_value("universal-2"),
             ["universal-2"],
         )
-        # Everything else (best, universal, default) prefers universal-3-pro
+        # Everything else (best, universal, default) prefers universal-3-5-pro
         # with universal-2 as the fallback.
         self.assertEqual(
             video_utils._assemblyai_speech_models_value("best"),
-            ["universal-3-pro", "universal-2"],
+            ["universal-3-5-pro", "universal-2"],
         )
         self.assertEqual(
             video_utils._assemblyai_speech_models_value("universal"),
-            ["universal-3-pro", "universal-2"],
+            ["universal-3-5-pro", "universal-2"],
         )
         self.assertEqual(
             video_utils._assemblyai_speech_models_value(None),
-            ["universal-3-pro", "universal-2"],
+            ["universal-3-5-pro", "universal-2"],
         )
 
     def test_assemblyai_language_options(self):
         from src.media.transcription import _assemblyai_language_options
 
-        models = ["universal-3-pro", "universal-2"]
+        models = ["universal-3-5-pro", "universal-2"]
         self.assertEqual(
             _assemblyai_language_options(None, models),
             {"language_detection": True, "speech_models": models},
