@@ -79,6 +79,15 @@ The template sets `FRONTEND_PORT=3107`. Existing deployments without this settin
 
 To use a different LLM provider, self-host with Ollama, or configure the optional pieces (B-roll, analytics, emails, YouTube metadata), see the [configuration guide](docs/configuration.md). If something misbehaves, the [troubleshooting guide](docs/troubleshooting.md) covers the common failure modes.
 
+### Windows (one double-click)
+
+1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) and [Git](https://git-scm.com/download/win).
+2. Clone the repo: `git clone https://github.com/kingzion24/supoclip.git katakata`
+3. In the `katakata` folder, copy `.env.example` to `.env` and fill in at least `ASSEMBLY_AI_API_KEY` and one AI key (for example a free `GOOGLE_API_KEY`). Save it.
+4. Double-click **`katakata-start.bat`**. It starts Docker Desktop if needed, checks your `.env`, asks once which folder to save clips in, builds and starts everything, and opens the app in your browser. The first run takes 10-20 minutes; later starts take seconds.
+
+Clips are written straight into the folder you chose (each `.mp4` has a small `.source_map.json` next to it that the editor uses). Editing a clip (trim, captions) saves a new file next to the old one, and deleting in the app leaves the files in place, so the folder keeps every version. For a tidy set, open a video's clips page and use **Save all to folder**: it writes clean, numbered copies (named after each clip's headline) into any folder you pick. Run `katakata-start.bat /choose` to switch folders and `katakata-stop.bat` to stop.
+
 ## Documentation
 
 Everything beyond this page lives in [`docs/`](docs/README.md):
