@@ -328,6 +328,7 @@ def create_optimized_clip(
 
             burn_ass_path: Optional[Path] = None
             fonts_dir: Optional[Path] = None
+            motion_beats: List[float] = []
             if (add_subtitles or hook_title) and build_assemblyai_ass_subtitles(
                 video_path,
                 start_time,
@@ -342,6 +343,7 @@ def create_optimized_clip(
                 effective_keep_ranges,
                 hook_title=hook_title,
                 include_captions=add_subtitles,
+                motion_beats=motion_beats,
             ):
                 burn_ass_path = ass_path
                 fonts_dir = ass_fonts_dir(
@@ -354,6 +356,7 @@ def create_optimized_clip(
                 reframe_format,
                 subtitle_ass_path=burn_ass_path,
                 fonts_dir=fonts_dir,
+                punch_times=motion_beats,
             )
             if not framed_ok:
                 raise RuntimeError("ffmpeg reframe render failed")

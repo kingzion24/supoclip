@@ -29,6 +29,12 @@ from .ffmpeg import (
     run_ffmpeg_command,
     subtitles_filter_fragment,
 )
+from .motion_graphics import (
+    build_motion_ass,
+    kinetic_hook_bar_event,
+    kinetic_hook_entrance,
+    motion_enabled,
+)
 from .transcription import (
     load_cached_transcript_data,
 )
@@ -206,6 +212,7 @@ def build_hook_title_ass(
     output_duration: float,
     font_name: str,
     caption_font_px: int,
+    kinetic: bool = False,
 ) -> Tuple[str, List[str]]:
     """Build the (style_line, dialogue_events) for a burned-in hook title.
 
@@ -269,12 +276,20 @@ def build_hook_title_ass(
     if output_duration <= HOOK_TITLE_MIN_SECONDS:
         start, end = 0.0, max(0.5, output_duration)
     entrance = "\\fad(160,240)"
-    if template.get("word_pop", True):
+    if kinetic:
+        entrance = kinetic_hook_entrance()
+    elif template.get("word_pop", True):
         entrance += "\\fscx90\\fscy90\\t(0,160,\\fscx100\\fscy100)"
     events = [
         f"Dialogue: 1,{ass_timestamp(start)},{ass_timestamp(end)},Hook,,0,0,0,,"
         f"{{{entrance}}}{text}"
     ]
+    if kinetic:
+        events.append(
+            kinetic_hook_bar_event(
+                start, end, video_width, margin_v, len(lines), hook_px, longest, highlight
+            )
+        )
     return style_line, events
 
 
@@ -296,8 +311,13 @@ def build_assemblyai_ass_subtitles(
     caption_words: Optional[List[Dict[str, Any]]] = None,
     position_y_override: Optional[float] = None,
     highlight_words: Optional[List[str]] = None,
+    motion_beats: Optional[List[float]] = None,
 ) -> bool:
     """Generate animated word-synced ASS subtitles from cached AssemblyAI words.
+
+    Templates with ``motion`` also get kinetic typography (see
+    ``motion_graphics``); the punch-zoom beat times are appended to
+    ``motion_beats`` when a list is passed, for the video zoom stage.
 
     Renders OpusClip-style captions: a per-word active highlight that pops, an
     accent colour on emphasised power/keyword words, contextual emojis, a thick
@@ -375,17 +395,19 @@ def build_assemblyai_ass_subtitles(
         else 1
     )
 
+    if keep_ranges:
+        ranges = normalize_source_ranges(keep_ranges)
+        fade = crossfade_fade_for_ranges(ranges)
+        output_duration = sum(end - start for start, end in ranges) - fade * max(
+            0, len(ranges) - 1
+        )
+    else:
+        output_duration = max(0.0, clip_end - clip_start)
+    kinetic = motion_enabled(template)
+
     hook_style_block = ""
     hook_events: List[str] = []
     if hook_title:
-        if keep_ranges:
-            ranges = normalize_source_ranges(keep_ranges)
-            fade = crossfade_fade_for_ranges(ranges)
-            output_duration = sum(end - start for start, end in ranges) - fade * max(
-                0, len(ranges) - 1
-            )
-        else:
-            output_duration = max(0.0, clip_end - clip_start)
         hook_style_line, hook_events = build_hook_title_ass(
             hook_title,
             template,
@@ -394,6 +416,7 @@ def build_assemblyai_ass_subtitles(
             output_duration,
             font_name,
             font_px,
+            kinetic=kinetic,
         )
         hook_style_block = f"{hook_style_line}\n"
 
@@ -414,6 +437,26 @@ def build_assemblyai_ass_subtitles(
         for index, word in enumerate(relevant_words)
         if normalize_token(str(word.get("text", ""))) in requested_highlights
     )
+
+    motion_events: List[str] = []
+    # Callouts and the progress bar travel with the captions, so a captionless
+    # render (e.g. the clean pass before a caption edit) does not draw them twice.
+    if kinetic and include_captions:
+        motion_styles, motion_events, beat_times = build_motion_ass(
+            template,
+            relevant_words,
+            emphasis_idx,
+            video_width,
+            video_height,
+            output_duration,
+            font_name,
+            font_px,
+            emphasis_color,
+            outline,
+        )
+        hook_style_block += "".join(f"{line}\n" for line in motion_styles)
+        if motion_beats is not None:
+            motion_beats.extend(beat_times)
 
     max_words = max(1, int(template.get("max_words_per_line", 4) or 4))
     chunk_size = max_words
@@ -533,7 +576,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 f"Dialogue: 0,{ass_timestamp(start)},{ass_timestamp(end)},Default,,0,0,0,,{line_prefix}{effect}{chunk_text}"
             )
 
-    all_events = hook_events + events
+    all_events = hook_events + events + motion_events
     output_ass_path.write_text(header + "\n".join(all_events) + "\n", encoding="utf-8")
     logger.info(
         "Wrote ASS subtitles: %s (%d events%s)",

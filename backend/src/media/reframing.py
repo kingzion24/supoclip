@@ -25,6 +25,7 @@ from .common import (
     OUTPUT_FPS,
     logger,
 )
+from .motion_graphics import punch_zoom_fragment
 from .ffmpeg import (
     build_audio_output_args,
     build_final_video_encode_args,
@@ -1237,12 +1238,14 @@ def render_reframed_clip_ffmpeg(
     output_format: str,
     subtitle_ass_path: Optional[Path] = None,
     fonts_dir: Optional[Path] = None,
+    punch_times: Optional[List[float]] = None,
 ) -> Tuple[bool, int, int]:
     """Render the final framed clip and (optionally) burn subtitles in one pass.
 
     Collapsing reframing + subtitle burn into a single encode avoids a whole
     generation of re-encode loss. The pass uses the high-quality profile, CFR
-    output and loudness-normalised audio.
+    output and loudness-normalised audio. ``punch_times`` adds motion-graphics
+    punch-zooms just before the subtitles, so captions never zoom.
     """
     width, height = ffprobe_video_size(input_path)
     has_audio = ffprobe_has_audio(input_path)
@@ -1253,8 +1256,15 @@ def render_reframed_clip_ffmpeg(
     )
     audio_args = build_audio_output_args(has_audio)
 
+    def finish(out_w: int, out_h: int) -> Optional[str]:
+        """The punch-zoom and subtitle stages that follow the framing chain."""
+        stages = [punch_zoom_fragment(punch_times or [], out_w, out_h), subs]
+        tail = ",".join(stage for stage in stages if stage)
+        return tail or None
+
     if output_format == "original":
         out_w, out_h = round_to_even(width), round_to_even(height)
+        subs = finish(out_w, out_h)
         if not subs:
             shutil.copyfile(input_path, output_path)
             return True, out_w, out_h
@@ -1273,6 +1283,8 @@ def render_reframed_clip_ffmpeg(
         if output_format in {"vertical_pan", "vertical_split"}
         else None
     )
+
+    subs = finish(1080, 1920)
 
     if plan and plan["mode"] == "split":
         left = plan["regions"]["left"]
