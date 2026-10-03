@@ -301,12 +301,17 @@ export function ProcessingPanel({ status, progress, message, readyCount }: { sta
   );
 }
 
-export function EmptyState({ icon, title, body, tone, children }: { icon: React.ReactNode; title: string; body: string; tone?: "error"; children?: React.ReactNode }) {
+export function EmptyState({ icon, title, body, tone, detail, children }: { icon: React.ReactNode; title: string; body: string; tone?: "error"; detail?: string; children?: React.ReactNode }) {
   return (
     <div className="flex flex-col items-center rounded-2xl border border-dashed px-6 py-16 text-center">
       <span className={cn("flex size-14 items-center justify-center rounded-2xl", tone === "error" ? "bg-red-50 text-red-600" : "bg-muted text-muted-foreground")}>{icon}</span>
       <h2 className="mt-4 text-lg font-semibold">{title}</h2>
       <p className="mt-1 max-w-md text-sm text-muted-foreground">{body}</p>
+      {detail && (
+        <p className="mt-3 max-w-xl break-words rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-left font-mono text-xs text-red-700">
+          {detail}
+        </p>
+      )}
       {children && <div className="mt-6 flex gap-2">{children}</div>}
     </div>
   );

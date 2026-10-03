@@ -71,6 +71,7 @@ def test_transcription_timeout_does_not_resubmit_paid_job(monkeypatch, tmp_path)
     helper = Mock(side_effect=TimeoutError("deadline exceeded"))
     monkeypatch.setattr(transcription, "_submit_and_wait_for_assemblyai_transcript", helper)
     monkeypatch.setattr(transcription, "_prepare_audio_for_transcription", lambda path: path)
+    monkeypatch.setattr(transcription, "_upload_for_assemblyai", lambda transcriber, path: "https://cdn/audio")
     with pytest.raises(TimeoutError):
         transcription._get_transcript_with_assemblyai(tmp_path / "video.mp4", "universal", runtime_config)
     helper.assert_called_once()
@@ -110,3 +111,82 @@ def test_submission_timeout_is_not_retried(monkeypatch):
         client.close()
     transcriber.upload_file.assert_called_once()
     transcriber.submit.assert_called_once()
+
+
+def _fake_transcript(status, error=None):
+    return SimpleNamespace(
+        status=status,
+        error=error,
+        utterances=[SimpleNamespace(start=0, end=2000, speaker="A", text="Habari za leo", words=[])],
+        words=[],
+        text="Habari za leo",
+        json_response={"language_code": "sw"},
+    )
+
+
+def test_rejected_request_retries_with_safer_models(monkeypatch, tmp_path):
+    runtime_config = SimpleNamespace(
+        assembly_ai_api_key="test",
+        assembly_ai_http_timeout_seconds=2,
+        transcription_language=None,
+    )
+    seen = []
+
+    def submit(transcriber, path, config, timeout, audio_url=None):
+        seen.append((list(config.speech_models), config.speaker_labels, audio_url))
+        if len(seen) == 1:
+            raise transcription.aai.types.TranscriptError("speech_models: unknown model", 400)
+        if len(seen) == 2:
+            return _fake_transcript(transcription.aai.TranscriptStatus.error, "language not supported")
+        return _fake_transcript(transcription.aai.TranscriptStatus.completed)
+
+    uploads = []
+    monkeypatch.setattr(transcription, "_submit_and_wait_for_assemblyai_transcript", submit)
+    monkeypatch.setattr(transcription, "_prepare_audio_for_transcription", lambda path: path)
+    monkeypatch.setattr(
+        transcription, "_upload_for_assemblyai", lambda transcriber, path: uploads.append(path) or "https://cdn/audio"
+    )
+    monkeypatch.setattr(transcription, "cache_transcript_data", lambda *args: None)
+    video = tmp_path / "video.mp4"
+    result = transcription._get_transcript_with_assemblyai(video, "universal", runtime_config)
+
+    assert "Habari za leo" in result
+    assert seen == [
+        (["universal-3-5-pro", "universal-2"], True, "https://cdn/audio"),
+        (["universal-3-pro", "universal-2"], True, "https://cdn/audio"),
+        (["universal-2"], True, "https://cdn/audio"),
+    ]
+    assert len(uploads) == 1  # audio uploaded once, reused for every attempt
+
+
+def test_auth_errors_are_not_retried(monkeypatch, tmp_path):
+    runtime_config = SimpleNamespace(
+        assembly_ai_api_key="bad", assembly_ai_http_timeout_seconds=2, transcription_language=None
+    )
+    calls = []
+
+    def submit(*args, **kwargs):
+        calls.append(1)
+        raise transcription.aai.types.TranscriptError("Invalid API key", 401)
+
+    monkeypatch.setattr(transcription, "_submit_and_wait_for_assemblyai_transcript", submit)
+    monkeypatch.setattr(transcription, "_prepare_audio_for_transcription", lambda path: path)
+    monkeypatch.setattr(transcription, "_upload_for_assemblyai", lambda transcriber, path: "u")
+    with pytest.raises(RuntimeError, match="Invalid API key"):
+        transcription._get_transcript_with_assemblyai(tmp_path / "v.mp4", "universal", runtime_config)
+    assert len(calls) == 1
+
+
+def test_all_attempts_failing_reports_assemblyai_reason(monkeypatch, tmp_path):
+    runtime_config = SimpleNamespace(
+        assembly_ai_api_key="test", assembly_ai_http_timeout_seconds=2, transcription_language=None
+    )
+    monkeypatch.setattr(
+        transcription,
+        "_submit_and_wait_for_assemblyai_transcript",
+        lambda *a, **k: _fake_transcript(transcription.aai.TranscriptStatus.error, "audio has no speech"),
+    )
+    monkeypatch.setattr(transcription, "_prepare_audio_for_transcription", lambda path: path)
+    monkeypatch.setattr(transcription, "_upload_for_assemblyai", lambda transcriber, path: "u")
+    with pytest.raises(RuntimeError, match="Transcription failed: audio has no speech"):
+        transcription._get_transcript_with_assemblyai(tmp_path / "v.mp4", "universal", runtime_config)

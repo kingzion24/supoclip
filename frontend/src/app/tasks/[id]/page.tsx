@@ -720,7 +720,7 @@ export default function TaskPage() {
         ) : task.status === "cancelled" && clips.length === 0 ? (
           <EmptyState icon={<PauseCircle className="size-7" />} title="Generation cancelled" body="Resume this generation when you are ready to continue." />
         ) : task.status === "error" ? (
-          <EmptyState tone="error" icon={<AlertCircle className="size-7" />} title="Processing Failed" body="There was an error processing your video. Resume to retry from where it stopped, or try another video.">
+          <EmptyState tone="error" icon={<AlertCircle className="size-7" />} title="Processing Failed" body="There was an error processing your video. Resume to retry from where it stopped, or try another video." detail={progressMessage || undefined}>
             <Button asChild variant="outline"><Link href="/"><ArrowLeft className="size-4" />Back to Home</Link></Button>
           </EmptyState>
         ) : clips.length === 0 ? (
