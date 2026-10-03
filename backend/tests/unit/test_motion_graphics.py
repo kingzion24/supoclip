@@ -55,3 +55,34 @@ def test_only_kinetic_templates_enable_motion():
     assert mg.motion_enabled(get_template("kinetic"))
     assert mg.motion_enabled(get_template("kinetic_green"))
     assert not mg.motion_enabled(get_template("default"))
+
+
+def test_resolve_motion_level_follows_ai_only_for_auto_templates():
+    auto = get_template("podcast_pro")
+    assert mg.resolve_motion_level(auto, {"level": "full"}) == "full"
+    assert mg.resolve_motion_level(auto, {"level": "none"}) is None
+    assert mg.resolve_motion_level(auto, None) == "subtle"
+    assert mg.resolve_motion_level(auto, {"level": "bogus"}) == "subtle"
+    assert mg.resolve_motion_level(get_template("kinetic"), {"level": "none"}) == "full"
+    assert mg.resolve_motion_level(get_template("default"), {"level": "full"}) is None
+
+
+def test_ai_callout_words_replace_rule_based_pick():
+    words = _words(("money", 2.0), ("500", 6.0), ("family", 10.0))
+    _, events, beats = mg.build_motion_ass(
+        get_template("podcast_pro"), words, {1}, 1080, 1920, 14.0, "F", 60,
+        "&H0000D4FF&", "&H00000000&", level="full", callout_words=["Family"],
+    )
+    callouts = [event for event in events if ",Callout," in event]
+    assert len(callouts) == 1 and callouts[0].endswith("FAMILY")
+    assert beats == [10.0]
+
+
+def test_subtle_level_caps_callouts_and_skips_punch_zoom():
+    words = _words(("one", 2.0), ("two", 6.0), ("three", 10.0), ("four", 14.0))
+    _, events, beats = mg.build_motion_ass(
+        get_template("podcast_pro"), words, {0, 1, 2, 3}, 1080, 1920, 20.0, "F", 60,
+        "&H0000D4FF&", "&H00000000&", level="subtle",
+    )
+    assert sum(",Callout," in event for event in events) == 2
+    assert beats == []

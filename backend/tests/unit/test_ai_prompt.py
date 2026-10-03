@@ -147,3 +147,25 @@ def test_prompts_keep_hook_titles_in_spoken_language():
     )
     assert "written in the segment's spoken language" in prompt
     assert "never translate it" in prompt
+
+
+def test_prompts_ask_for_motion_direction():
+    assert "MOTION GRAPHICS DIRECTION" in transcript_analysis_system_prompt
+    assert '"none": emotional, vulnerable or serious moments' in transcript_analysis_system_prompt
+    prompt = build_transcript_analysis_prompt(transcript="[00:12 - 00:21] Nililipoteza milioni 500")
+    assert '"motion_level", "callout_words"' in prompt
+
+
+def test_segment_motion_fields_are_coerced_and_grounded():
+    from src.ai import TranscriptSegment, filter_callout_words
+
+    segment = TranscriptSegment.model_validate(
+        {"start_time": "00:01", "end_time": "00:30", "text": "I lost $500 million in one day",
+         "motion": "HIGH", "keywords": "$500, million, banana, day, lost"}
+    )
+    assert segment.motion_level == "full"
+    assert segment.callout_words == ["$500", "million", "banana"]
+    assert filter_callout_words(segment.callout_words, segment.text) == ["$500", "million"]
+    assert TranscriptSegment.model_validate(
+        {"start_time": "00:01", "end_time": "00:30", "text": "x"}
+    ).motion_level == "subtle"

@@ -249,8 +249,13 @@ def create_optimized_clip(
     keep_ranges: Optional[List[Tuple[float, float]]] = None,
     hook_title: Optional[str] = None,
     extend_to_sentence: bool = True,
+    motion_plan: Optional[Dict[str, Any]] = None,
 ) -> bool:
-    """Create clip with optional subtitles. output_format: 'vertical' (9:16) or 'original' (keep source size)."""
+    """Create clip with optional subtitles. output_format: 'vertical' (9:16) or 'original' (keep source size).
+
+    ``motion_plan`` carries the AI's per-clip motion direction ({"level",
+    "callout_words"}) for caption templates with ``motion: "auto"``.
+    """
     try:
         if keep_ranges:
             effective_keep_ranges = normalize_source_ranges(keep_ranges)
@@ -344,6 +349,7 @@ def create_optimized_clip(
                 hook_title=hook_title,
                 include_captions=add_subtitles,
                 motion_beats=motion_beats,
+                motion_plan=motion_plan,
             ):
                 burn_ass_path = ass_path
                 fonts_dir = ass_fonts_dir(

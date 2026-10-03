@@ -15,7 +15,10 @@ templates keep working):
   - motion:             kinetic typography and motion graphics: slam-in hook
                         title, keyword callouts with punch-zooms, progress bar
                         (bool, see media/motion_graphics.py)
+                        True = always full motion; "auto" = the AI picks
+                        none/subtle/full per clip (calm on emotional moments)
   - progress_bar:       with motion, draw the progress bar (bool, default True)
+  - hook_banner:        hook title as black caps on a white box (bool)
 """
 
 from typing import Dict, Any, Literal
@@ -209,6 +212,32 @@ CAPTION_TEMPLATES: Dict[str, Dict[str, Any]] = {
         "motion": True,
         "progress_bar": True,
     },
+    "podcast_pro": {
+        "name": "Podcast Pro",
+        "description": "Podcast-clip style: white hook banner, keyword captions, and motion the AI adds only where a clip needs energy",
+        "font_family": "THEBOLDFONT",
+        "font_size": 32,
+        "font_color": "#FFFFFF",
+        "highlight_color": "#FFD400",
+        "emphasis_color": "#FFD400",
+        "stroke_color": "#000000",
+        "stroke_width": 3,
+        "background": False,
+        "background_color": None,
+        "word_box": False,
+        "word_box_color": None,
+        "animation": "karaoke",
+        "word_pop": False,
+        "emoji": False,
+        "uppercase": True,
+        "shadow": True,
+        "glow": False,
+        "max_words_per_line": 3,
+        "position_y": 0.78,
+        "motion": "auto",
+        "progress_bar": True,
+        "hook_banner": True,
+    },
     "kinetic_green": {
         "name": "Kinetic Green",
         "description": "Kinetic motion graphics with a green pill on the active word",
@@ -258,6 +287,7 @@ TEMPLATE_DEFAULTS: Dict[str, Any] = {
     "position_y": 0.80,
     "motion": False,
     "progress_bar": True,
+    "hook_banner": False,
 }
 
 
@@ -291,7 +321,7 @@ def get_template_info() -> list:
             "font_size": template["font_size"],
             "font_color": template["font_color"],
             "highlight_color": template["highlight_color"],
-            "motion": bool(template.get("motion")),
+            "motion": template.get("motion") or False,
         }
         for name, template in CAPTION_TEMPLATES.items()
     ]

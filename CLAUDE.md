@@ -91,7 +91,7 @@ utils/               → Thread pool helpers for blocking operations (async_help
    - Custom fonts (TTF files in `backend/fonts/`)
    - Optional transition effects (`backend/transitions/`)
    - Optional B-roll overlays (Pexels API)
-   - Caption templates with animation styles; templates with `motion` (Kinetic, Kinetic Green) add kinetic typography from `media/motion_graphics.py`: slam-in hook title + accent bar, keyword callouts, punch-zooms on those beats (per-frame scale+crop before the subtitle burn), and a progress bar
+   - Caption templates with animation styles; templates with `motion` (Kinetic, Kinetic Green) add kinetic typography from `media/motion_graphics.py`: slam-in hook title + accent bar, keyword callouts, punch-zooms on those beats (per-frame scale+crop before the subtitle burn), and a progress bar. Podcast Pro uses `motion: "auto"`: the AI returns a per-clip `motion_level` (none for emotional/serious moments, subtle for most, full for numbers/lists/high energy) and up to 3 `callout_words` copied from the segment, modelled on how The Diary of a CEO edits clips; it also uses a white `hook_banner`
    - Optional audio layers per task (`media/audio_enhancements.py`): background music from `backend/music/` and a spoken hook (Edge TTS, Swahili voices included), mixed in one ffmpeg pass with `-c:v copy`
 5. **Storage** → Clips to `{TEMP_DIR}/clips/`, metadata to PostgreSQL
 

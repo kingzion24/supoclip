@@ -33,7 +33,7 @@ from .motion_graphics import (
     build_motion_ass,
     kinetic_hook_bar_event,
     kinetic_hook_entrance,
-    motion_enabled,
+    resolve_motion_level,
 )
 from .transcription import (
     load_cached_transcript_data,
@@ -221,7 +221,8 @@ def build_hook_title_ass(
     outline/backing for contrast, power words and numbers in the template's
     highlight colour, and a quick fade+pop entrance.
     """
-    uppercase = bool(template.get("uppercase"))
+    banner = bool(template.get("hook_banner"))
+    uppercase = bool(template.get("uppercase")) or banner
     title_text = hook_title.upper() if uppercase else hook_title
 
     primary = hex_to_ass_color(template.get("font_color"), "#FFFFFF")
@@ -230,6 +231,10 @@ def build_hook_title_ass(
     )
     outline = hex_to_ass_color(template.get("stroke_color") or "#000000", "#000000")
     back_color = hex_to_ass_color(template.get("background_color"), "#00000080")
+    if banner:
+        # Podcast-clip banner: black caps on a solid white box.
+        primary = highlight = hex_to_ass_color("#000000")
+        outline = back_color = hex_to_ass_color("#FFFFFF")
 
     # Slightly smaller than the captions so the spoken words stay the hero.
     base_px = max(34, min(66, int(caption_font_px * 0.82)))
@@ -243,7 +248,7 @@ def build_hook_title_ass(
 
     base_stroke = int(template.get("stroke_width", 3) or 0)
     has_outline = template.get("stroke_color") is not None and base_stroke > 0
-    border_style = 3 if (not has_outline and template.get("background_color")) else 1
+    border_style = 3 if (banner or (not has_outline and template.get("background_color"))) else 1
     outline_px = (
         max(base_stroke, round(hook_px * base_stroke / 26)) if has_outline else 0
     )
@@ -251,7 +256,7 @@ def build_hook_title_ass(
         outline_px = max(4, hook_px // 6)  # backing-box padding
     elif outline_px == 0:
         outline_px = max(2, hook_px // 16)  # always keep contrast on video
-    shadow_px = max(2, hook_px // 20) if template.get("shadow") else 0
+    shadow_px = max(2, hook_px // 20) if (template.get("shadow") and not banner) else 0
     margin_v = max(48, int(video_height * HOOK_TITLE_TOP_MARGIN_FRAC))
 
     style_line = (
@@ -312,6 +317,7 @@ def build_assemblyai_ass_subtitles(
     position_y_override: Optional[float] = None,
     highlight_words: Optional[List[str]] = None,
     motion_beats: Optional[List[float]] = None,
+    motion_plan: Optional[Dict[str, Any]] = None,
 ) -> bool:
     """Generate animated word-synced ASS subtitles from cached AssemblyAI words.
 
@@ -403,7 +409,9 @@ def build_assemblyai_ass_subtitles(
         )
     else:
         output_duration = max(0.0, clip_end - clip_start)
-    kinetic = motion_enabled(template)
+    motion_level = resolve_motion_level(template, motion_plan)
+    # The slam-in hook belongs to full motion; subtle clips keep a calm entrance.
+    kinetic = motion_level == "full"
 
     hook_style_block = ""
     hook_events: List[str] = []
@@ -441,7 +449,7 @@ def build_assemblyai_ass_subtitles(
     motion_events: List[str] = []
     # Callouts and the progress bar travel with the captions, so a captionless
     # render (e.g. the clean pass before a caption edit) does not draw them twice.
-    if kinetic and include_captions:
+    if motion_level and include_captions:
         motion_styles, motion_events, beat_times = build_motion_ass(
             template,
             relevant_words,
@@ -453,6 +461,8 @@ def build_assemblyai_ass_subtitles(
             font_px,
             emphasis_color,
             outline,
+            level=motion_level,
+            callout_words=(motion_plan or {}).get("callout_words") or None,
         )
         hook_style_block += "".join(f"{line}\n" for line in motion_styles)
         if motion_beats is not None:

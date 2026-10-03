@@ -343,6 +343,10 @@ class VideoService:
                 output_format,
                 keep_ranges,
                 segment.get("hook_title"),
+                motion_plan={
+                    "level": segment.get("motion_level"),
+                    "callout_words": segment.get("callout_words") or [],
+                },
             )
 
             if not success:
@@ -608,6 +612,8 @@ class VideoService:
                         "shareability_score": virality.get("shareability_score", 0),
                         "hook_type": virality.get("hook_type"),
                         "hook_title": segment.get("hook_title"),
+                        "motion_level": segment.get("motion_level"),
+                        "callout_words": segment.get("callout_words") or [],
                     }
                 else:
                     virality = segment.virality.model_dump() if segment.virality else {}
@@ -624,6 +630,8 @@ class VideoService:
                         "shareability_score": virality.get("shareability_score", 0),
                         "hook_type": virality.get("hook_type"),
                         "hook_title": getattr(segment, "hook_title", None),
+                        "motion_level": getattr(segment, "motion_level", None),
+                        "callout_words": list(getattr(segment, "callout_words", None) or []),
                     }
 
                 segment_payload["text"] = VideoService._ground_segment_text(

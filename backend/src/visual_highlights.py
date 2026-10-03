@@ -327,6 +327,9 @@ def build_visual_segments(
                 "shareability_score": quarter,
                 "hook_type": "visual",
                 "hook_title": highlight.get("hook_title"),
+                # Dance, stunts and reactions are high-energy by nature.
+                "motion_level": "full",
+                "callout_words": [],
             }
         )
     return segments

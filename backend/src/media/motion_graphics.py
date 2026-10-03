@@ -36,8 +36,49 @@ PROGRESS_BAR_FRAC = 0.006
 _CALLOUT_STRIP = re.compile(r"^[^\w$%#]+|[^\w$%]+$", re.UNICODE)
 
 
+MOTION_LEVELS = ("none", "subtle", "full")
+# "subtle" clips get at most this many callouts and no punch-zooms.
+SUBTLE_MAX_CALLOUTS = 2
+
+
 def motion_enabled(template: Dict[str, Any]) -> bool:
     return bool(template.get("motion"))
+
+
+def resolve_motion_level(
+    template: Dict[str, Any], motion_plan: Optional[Dict[str, Any]] = None
+) -> Optional[str]:
+    """Return "subtle"/"full" for the motion to draw, or None for no motion.
+
+    ``motion: True`` always means full motion. ``motion: "auto"`` follows the
+    AI's per-clip ``motion_level`` (subtle when the clip has no plan, e.g.
+    after a regenerate).
+    """
+    motion = template.get("motion")
+    if motion is True:
+        return "full"
+    if motion != "auto":
+        return None
+    level = (motion_plan or {}).get("level")
+    if level not in MOTION_LEVELS:
+        level = "subtle"
+    return None if level == "none" else level
+
+
+def match_callout_indices(
+    words: List[Dict[str, Any]], callout_words: List[str]
+) -> Set[int]:
+    """Map the AI's callout words onto the first matching spoken word."""
+    wanted = [normalize_token(word) for word in callout_words if normalize_token(word)]
+    found: Set[int] = set()
+    for target in wanted:
+        for index, word in enumerate(words):
+            if index in found or float(word.get("start", 0)) < CALLOUT_START_AFTER:
+                continue
+            if normalize_token(str(word.get("text", ""))) == target:
+                found.add(index)
+                break
+    return found
 
 
 def _ass_time(seconds: float) -> str:
@@ -69,9 +110,12 @@ def select_motion_beats(
     words: List[Dict[str, Any]],
     emphasis_idx: Set[int],
     output_duration: float,
+    max_beats: Optional[int] = None,
 ) -> List[Tuple[float, str]]:
     """Pick the (time, text) moments that get a callout and a punch-zoom."""
     budget = min(CALLOUT_MAX, max(1, int(output_duration // CALLOUT_SECONDS_PER_BEAT)))
+    if max_beats is not None:
+        budget = min(budget, max_beats)
     candidates = []
     for index in emphasis_idx:
         if index >= len(words):
@@ -138,8 +182,14 @@ def build_motion_ass(
     caption_font_px: int,
     highlight_color: str,
     outline_color: str,
+    level: str = "full",
+    callout_words: Optional[List[str]] = None,
 ) -> Tuple[List[str], List[str], List[float]]:
-    """Return (style lines, dialogue events, punch-zoom beat times)."""
+    """Return (style lines, dialogue events, punch-zoom beat times).
+
+    ``level`` "subtle" draws at most two callouts and no punch-zooms.
+    ``callout_words`` (chosen by the AI) replace the rule-based keyword pick.
+    """
     styles: List[str] = []
     events: List[str] = []
     beat_times: List[float] = []
@@ -154,7 +204,16 @@ def build_motion_ass(
     callout_y = int(video_height * CALLOUT_Y_FRAC)
     uppercase = template.get("uppercase", True) is not False
 
-    for number, (start, text) in enumerate(select_motion_beats(words, emphasis_idx, output_duration)):
+    candidates = emphasis_idx
+    if callout_words:
+        candidates = match_callout_indices(words, callout_words) or emphasis_idx
+    beats = select_motion_beats(
+        words,
+        candidates,
+        output_duration,
+        max_beats=SUBTLE_MAX_CALLOUTS if level == "subtle" else None,
+    )
+    for number, (start, text) in enumerate(beats):
         label = text if uppercase else text.lower()
         tilt = -6 if number % 2 == 0 else 6
         end = min(output_duration, start + CALLOUT_HOLD_SECONDS)
@@ -168,7 +227,8 @@ def build_motion_ass(
         events.append(
             f"Dialogue: 3,{_ass_time(start)},{_ass_time(end)},Callout,,0,0,0,,{{{tags}}}{label}"
         )
-        beat_times.append(start)
+        if level == "full":
+            beat_times.append(start)
 
     if template.get("progress_bar", True) and output_duration > 1:
         bar_h = max(6, int(video_height * PROGRESS_BAR_FRAC))
