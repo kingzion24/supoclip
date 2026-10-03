@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SupoClip is an open-source alternative to OpusClip — an AI-powered video clipping tool that transforms long-form content into viral short clips. AGPL-3.0 licensed.
+Katakata is an open-source alternative to OpusClip — an AI-powered video clipping tool that transforms long-form content into viral short clips. AGPL-3.0 licensed. It is a fork of SupoClip (https://github.com/FujiwaraChoki/supoclip): user-facing text says "Katakata", while technical identifiers keep the `supoclip` name (Python package, `x-supoclip-*` auth headers, storage keys, Docker paths, the `supoclip-mcp` package) so existing deployments and clients keep working.
 
 ## Development Commands
 
@@ -212,6 +212,11 @@ Edit `backend/src/ai.py`: `simplified_system_prompt` controls selection criteria
 - Static talking-head crops get a slow ~5% Ken Burns punch-in (`kenburns_zoom_fragment`); tracked pans and split screens keep their own motion
 
 ## iOS App
+
+The upstream SupoClip iOS app is not part of Katakata. The web app only shows an
+App Store badge, Smart App Banner and app structured data when
+`NEXT_PUBLIC_APP_STORE_ID` is set to your own app's id. The notes below describe
+the upstream app and its billing hooks.
 
 A native iOS app ships on the App Store
 (https://apps.apple.com/us/app/supoclip/id6784760040, app id `6784760040`). Its

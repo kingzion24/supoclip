@@ -7,19 +7,19 @@ import { Badge } from "@/components/ui/badge";
 import { HOSTED_APP_URL, blogPosts, getSiteUrl } from "@/lib/blog-posts";
 
 export const metadata: Metadata = {
-  title: { absolute: "SupoClip Blog | AI Video Clipping Guides" },
+  title: { absolute: "Katakata Blog | AI Video Clipping Guides" },
   description:
-    "Practical guides, product comparisons, and creator workflows for turning long-form video into social-ready shorts with SupoClip.",
+    "Practical guides, product comparisons, and creator workflows for turning long-form video into social-ready shorts with Katakata.",
   alternates: {
     canonical: `${getSiteUrl()}/blog`,
   },
   openGraph: {
-    title: "SupoClip Blog",
+    title: "Katakata Blog",
     description:
       "Guides and comparisons for AI video clipping, auto captions, vertical reframing, and short-form video workflows.",
     type: "website",
     url: `${getSiteUrl()}/blog`,
-    siteName: "SupoClip",
+    siteName: "Katakata",
   },
 };
 
@@ -31,12 +31,12 @@ export default function BlogIndexPage() {
       <header className="border-b bg-background/95">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
           <Link href="/" className="flex items-center gap-2.5">
-            <Image src="/logo.png" alt="SupoClip" width={24} height={24} className="rounded-lg" />
+            <Image src="/logo.png" alt="Katakata" width={24} height={24} className="rounded-lg" />
             <span
               className="text-lg font-bold tracking-tight"
               style={{ fontFamily: "var(--font-syne), var(--font-geist-sans), system-ui" }}
             >
-              SupoClip
+              Katakata
             </span>
           </Link>
           <div className="flex items-center gap-2">
@@ -63,7 +63,7 @@ export default function BlogIndexPage() {
             <a href={HOSTED_APP_URL} target="_blank" rel="noopener noreferrer">
               <Badge variant="outline" className="gap-2">
                 <ExternalLink className="h-3.5 w-3.5" />
-                Try hosted SupoClip
+                Try hosted Katakata
               </Badge>
             </a>
           </div>

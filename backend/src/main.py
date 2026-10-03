@@ -1,5 +1,5 @@
 """
-SupoClip FastAPI application.
+Katakata FastAPI application.
 
 This is the new main entry point with:
 - Separated concerns (routes, services, repositories, workers)
@@ -58,7 +58,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         """Application lifespan: startup and shutdown events."""
-        logger.info("🚀 Starting SupoClip API...")
+        logger.info("🚀 Starting Katakata API...")
         try:
             await init_db()
             logger.info("✅ Database initialized")
@@ -71,14 +71,14 @@ def create_app(
 
             yield
         finally:
-            logger.info("🛑 Shutting down SupoClip API...")
+            logger.info("🛑 Shutting down Katakata API...")
             await close_db()
             await queue_adapter.close_pool()
             logger.info("✅ Cleanup complete")
 
     app = FastAPI(
-        title="SupoClip API",
-        description="SupoClip backend with async job processing",
+        title="Katakata API",
+        description="Katakata backend with async job processing",
         version="0.2.0",
         lifespan=lifespan,
     )
@@ -183,7 +183,7 @@ def create_app(
     def read_root():
         """Root endpoint."""
         return {
-            "name": "SupoClip API",
+            "name": "Katakata API",
             "version": "0.2.0",
             "status": "running",
             "docs": "/docs",

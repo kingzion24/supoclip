@@ -22,30 +22,30 @@ export const blogPosts: BlogPost[] = [
   {
     slug: "supoclip-vs-supo-live",
     image: { src: "/blog/supoclip-open-source-clipping.webp", alt: "Editorial illustration of a podcast recording becoming three vertical video clips", width: 1672, height: 941 },
-    title: "SupoClip vs supo.live: Why Open Source Wins",
+    title: "Katakata vs supo.live: Why Open Source Wins",
     description:
-      "Compare SupoClip and supo.live for AI video clipping. See why SupoClip wins for open-source control, self-hosting, and customizable video workflows.",
+      "Compare Katakata and supo.live for AI video clipping. See why Katakata wins for open-source control, self-hosting, and customizable video workflows.",
     eyebrow: "Supo.live Alternative",
     category: "Comparison",
     publishedAt: "2026-09-21",
     updatedAt: "2026-09-21",
     readingTime: "5 min read",
-    author: "SupoClip",
-    keywords: ["SupoClip vs supo.live", "supo.live alternative", "open-source video clipper", "self-hosted AI video clipping", "AI clip maker"],
+    author: "Katakata",
+    keywords: ["Katakata vs supo.live", "supo.live alternative", "open-source video clipper", "self-hosted AI video clipping", "AI clip maker"],
     summary:
-      "For creators and teams who want control over their clipping workflow, SupoClip is the better open-source alternative to supo.live.",
+      "For creators and teams who want control over their clipping workflow, Katakata is the better open-source alternative to supo.live.",
   },
   {
     slug: "best-free-opusclip-alternative",
     title: "Best, Free OpusClip Alternative",
     description:
-      "Looking for a free OpusClip alternative? SupoClip is an open-source AI clip maker that turns long videos into captioned, vertical shorts you can self-host.",
+      "Looking for a free OpusClip alternative? Katakata is an open-source AI clip maker that turns long videos into captioned, vertical shorts you can self-host.",
     eyebrow: "OpusClip Alternative",
     category: "Comparison",
     publishedAt: "2026-05-07",
     updatedAt: "2026-05-07",
     readingTime: "6 min read",
-    author: "SupoClip",
+    author: "Katakata",
     keywords: [
       "free OpusClip alternative",
       "OpusClip alternative",
@@ -55,7 +55,7 @@ export const blogPosts: BlogPost[] = [
       "YouTube shorts clipper",
     ],
     summary:
-      "SupoClip is built for creators who want OpusClip-style AI clipping without committing to another credit-based subscription.",
+      "Katakata is built for creators who want OpusClip-style AI clipping without committing to another credit-based subscription.",
   },
 ];
 
@@ -68,7 +68,7 @@ export function getBlogPostMetadata(post: BlogPost): Metadata {
   const url = `${siteUrl}/blog/${post.slug}`;
 
   return {
-    title: { absolute: `${post.title} | SupoClip` },
+    title: { absolute: `${post.title} | Katakata` },
     description: post.description,
     keywords: post.keywords,
     alternates: {
@@ -79,7 +79,7 @@ export function getBlogPostMetadata(post: BlogPost): Metadata {
       description: post.description,
       type: "article",
       url,
-      siteName: "SupoClip",
+      siteName: "Katakata",
       publishedTime: post.publishedAt,
       modifiedTime: post.updatedAt,
       authors: [post.author],

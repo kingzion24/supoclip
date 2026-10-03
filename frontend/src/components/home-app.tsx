@@ -404,7 +404,7 @@ export default function HomeApp() {
               <AlertCircle className="h-4 w-4 text-amber-600" />
               <AlertDescription className="text-sm text-amber-900">
                 <span className="font-medium">{generationGateMessage}</span>{" "}
-                Free accounts can browse SupoClip, but video generation requires a paid plan.
+                Free accounts can browse Katakata, but video generation requires a paid plan.
                 <Link href="/settings" className="ml-1 font-semibold underline underline-offset-2">Upgrade in settings</Link>.
               </AlertDescription>
             </Alert>

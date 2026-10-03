@@ -33,14 +33,14 @@ export async function generateMetadata({ params }: SeoLandingPageProps): Promise
     keywords: page.keywords,
     alternates: { canonical: url },
     openGraph: {
-      title: `${page.metaTitle} | SupoClip`,
+      title: `${page.metaTitle} | Katakata`,
       description: page.metaDescription,
       url,
-      siteName: "SupoClip",
+      siteName: "Katakata",
       type: "article",
       publishedTime: page.publishedAt,
       modifiedTime: page.updatedAt,
-      authors: ["SupoClip Team"],
+      authors: ["Katakata Team"],
     },
     twitter: {
       card: "summary_large_image",
@@ -68,15 +68,15 @@ export default async function SeoLandingPage({ params }: SeoLandingPageProps) {
       url,
       datePublished: page.publishedAt,
       dateModified: page.updatedAt,
-      author: { "@type": "Organization", name: "SupoClip Team", url: siteUrl },
-      publisher: { "@type": "Organization", name: "SupoClip", url: siteUrl },
-      about: { "@type": "SoftwareApplication", name: "SupoClip", url: siteUrl },
+      author: { "@type": "Organization", name: "Katakata Team", url: siteUrl },
+      publisher: { "@type": "Organization", name: "Katakata", url: siteUrl },
+      about: { "@type": "SoftwareApplication", name: "Katakata", url: siteUrl },
     },
     {
       "@context": "https://schema.org",
       "@type": "BreadcrumbList",
       itemListElement: [
-        { "@type": "ListItem", position: 1, name: "SupoClip", item: siteUrl },
+        { "@type": "ListItem", position: 1, name: "Katakata", item: siteUrl },
         { "@type": "ListItem", position: 2, name: page.heading, item: url },
       ],
     },
@@ -104,8 +104,8 @@ export default async function SeoLandingPage({ params }: SeoLandingPageProps) {
       <header className="border-b bg-background/95">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
           <Link href="/" className="flex items-center gap-2.5">
-            <Image src="/logo.png" alt="SupoClip" width={24} height={24} className="rounded-lg" />
-            <span className="text-lg font-bold tracking-tight">SupoClip</span>
+            <Image src="/logo.png" alt="Katakata" width={24} height={24} className="rounded-lg" />
+            <span className="text-lg font-bold tracking-tight">Katakata</span>
           </Link>
           <nav className="flex items-center gap-2" aria-label="Primary navigation">
             <Link href="/blog"><Button variant="ghost" size="sm">Blog</Button></Link>
@@ -118,7 +118,7 @@ export default async function SeoLandingPage({ params }: SeoLandingPageProps) {
         <section className="border-b bg-muted/35">
           <div className="mx-auto max-w-5xl px-6 py-14 md:py-20">
             <nav aria-label="Breadcrumb" className="mb-6 text-sm text-muted-foreground">
-              <Link href="/" className="hover:text-foreground">SupoClip</Link>
+              <Link href="/" className="hover:text-foreground">Katakata</Link>
               <span aria-hidden="true" className="mx-2">/</span>
               <span>{page.eyebrow}</span>
             </nav>
@@ -128,14 +128,14 @@ export default async function SeoLandingPage({ params }: SeoLandingPageProps) {
             </h1>
             <p className="mt-6 max-w-3xl text-lg leading-8 text-muted-foreground">{page.summary}</p>
             <div className="mt-7 flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-              <span>SupoClip Team</span>
+              <span>Katakata Team</span>
               <span className="flex items-center gap-1.5">
                 <CalendarDays className="h-4 w-4" />
                 Updated <time dateTime={page.updatedAt}>July 27, 2026</time>
               </span>
             </div>
             <div className="mt-9 flex flex-wrap gap-3">
-              <Link href="/sign-up"><Button size="lg">Try SupoClip <ArrowRight className="h-4 w-4" /></Button></Link>
+              <Link href="/sign-up"><Button size="lg">Try Katakata <ArrowRight className="h-4 w-4" /></Button></Link>
               <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">
                 <Button variant="outline" size="lg"><Github className="h-4 w-4" /> View source</Button>
               </a>
@@ -164,7 +164,7 @@ export default async function SeoLandingPage({ params }: SeoLandingPageProps) {
               </table>
             </div>
             <p className="mt-3 text-xs text-muted-foreground">
-              First-party product data from the SupoClip repository and hosted application, verified July 27, 2026.
+              First-party product data from the Katakata repository and hosted application, verified July 27, 2026.
             </p>
           </section>
 
@@ -219,7 +219,7 @@ export default async function SeoLandingPage({ params }: SeoLandingPageProps) {
           <aside className="mt-14 rounded-lg bg-muted/45 p-6 text-sm text-muted-foreground">
             <p className="font-semibold text-foreground">Sources and review policy</p>
             <p className="mt-2 leading-7">
-              Product capabilities are maintained by the SupoClip Team and checked against the public
+              Product capabilities are maintained by the Katakata Team and checked against the public
               repository. Review the <a href={GITHUB_URL} className="font-medium text-foreground underline underline-offset-4">source code <ExternalLink className="inline h-3.5 w-3.5" /></a> for implementation details. This page is updated when the workflow or supported configuration changes.
             </p>
           </aside>

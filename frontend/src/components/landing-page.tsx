@@ -32,7 +32,7 @@ import {
 } from "lucide-react";
 import { isLandingOnlyModeEnabled } from "@/lib/app-flags";
 import { getPublicBillingPlans } from "@/lib/billing-plans";
-import { APP_STORE_URL, GITHUB_URL, HOSTED_APP_URL } from "@/lib/site";
+import { APP_STORE_URL, GITHUB_URL, HOSTED_APP_URL, UPSTREAM_GITHUB_URL } from "@/lib/site";
 
 function ScrollReveal({
   children,
@@ -186,20 +186,20 @@ const SEO_RESOURCES = [
   {
     href: "/blog/supoclip-vs-supo-live",
     eyebrow: "Comparison",
-    title: "SupoClip vs supo.live: open-source control",
+    title: "Katakata vs supo.live: open-source control",
     description: "Compare self-hosting, AI clipping, and editing workflows before choosing your next video tool.",
   },
   {
     href: "/ai-video-clipper",
     eyebrow: "AI Video Clipping",
     title: "AI video clipper for Shorts, Reels, and TikTok",
-    description: "See how SupoClip finds moments, scores candidates, reframes faces, and adds captions.",
+    description: "See how Katakata finds moments, scores candidates, reframes faces, and adds captions.",
   },
   {
     href: "/open-source-video-clipper",
     eyebrow: "Self-Hosting",
     title: "Open-source video clipper you can control",
-    description: "Compare hosted-only workflows with SupoClip's inspectable, self-hosted pipeline.",
+    description: "Compare hosted-only workflows with Katakata's inspectable, self-hosted pipeline.",
   },
   {
     href: "/youtube-shorts-clipper",
@@ -211,7 +211,7 @@ const SEO_RESOURCES = [
     href: "/blog/best-free-opusclip-alternative",
     eyebrow: "Comparison",
     title: "Best free OpusClip alternative",
-    description: "Compare SupoClip's open-source approach with a managed, credit-based clipping tool.",
+    description: "Compare Katakata's open-source approach with a managed, credit-based clipping tool.",
   },
 ];
 
@@ -240,7 +240,7 @@ export default function LandingPage() {
           <Link href="/" className="flex items-center gap-2.5 group">
             <Image
               src="/logo.png"
-              alt="SupoClip"
+              alt="Katakata"
               width={24}
               height={24}
               className="rounded-lg transition-transform group-hover:scale-105"
@@ -252,7 +252,7 @@ export default function LandingPage() {
                   "var(--font-syne), var(--font-geist-sans), system-ui",
               }}
             >
-              SupoClip
+              Katakata
             </span>
           </Link>
 
@@ -461,7 +461,7 @@ export default function LandingPage() {
                   </a>
                 )}
                 <a
-                  href="https://github.com/FujiwaraChoki/supoclip"
+                  href={GITHUB_URL}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
@@ -470,21 +470,23 @@ export default function LandingPage() {
                     View Source
                   </Button>
                 </a>
-                <a
-                  href={APP_STORE_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="Download SupoClip on the App Store"
-                  className="flex items-center"
-                >
-                  <Image
-                    src="/app-store-badge.svg"
-                    alt="Download on the App Store"
-                    width={135}
-                    height={40}
-                    className="h-12 w-auto"
-                  />
-                </a>
+                {APP_STORE_URL && (
+                  <a
+                    href={APP_STORE_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Download Katakata on the App Store"
+                    className="flex items-center"
+                  >
+                    <Image
+                      src="/app-store-badge.svg"
+                      alt="Download on the App Store"
+                      width={135}
+                      height={40}
+                      className="h-12 w-auto"
+                    />
+                  </a>
+                )}
               </div>
 
               <div
@@ -834,7 +836,7 @@ export default function LandingPage() {
                     <span className="opacity-50">$</span>{" "}
                     git clone{" "}
                     <span className="opacity-40">
-                      https://github.com/FujiwaraChoki/supoclip
+                      https://github.com/kingzion24/supoclip
                     </span>
                   </div>
                   <div>
@@ -850,7 +852,7 @@ export default function LandingPage() {
 
                 <div className="flex flex-wrap gap-3 mt-6">
                   <a
-                    href="https://github.com/FujiwaraChoki/supoclip"
+                    href={GITHUB_URL}
                     target="_blank"
                     rel="noopener noreferrer"
                   >
@@ -895,7 +897,7 @@ export default function LandingPage() {
               Learn the complete clipping workflow
             </h2>
             <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-muted-foreground">
-              Practical, source-backed pages for choosing a video clipper, self-hosting SupoClip,
+              Practical, source-backed pages for choosing a video clipper, self-hosting Katakata,
               and turning long recordings into short-form content.
             </p>
           </ScrollReveal>
@@ -961,7 +963,7 @@ export default function LandingPage() {
           <div className="flex items-center gap-2">
             <Image
               src="/logo.png"
-              alt="SupoClip"
+              alt="Katakata"
               width={24}
               height={24}
               className="rounded-md"
@@ -970,7 +972,7 @@ export default function LandingPage() {
               className="text-sm font-semibold"
               style={{ fontFamily: "var(--font-syne), system-ui" }}
             >
-              SupoClip
+              Katakata
             </span>
           </div>
           <nav aria-label="Footer navigation" className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
@@ -988,13 +990,23 @@ export default function LandingPage() {
             >
               GitHub
             </a>
+            {APP_STORE_URL && (
+              <a
+                href={APP_STORE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-foreground transition-colors"
+              >
+                iOS App
+              </a>
+            )}
             <a
-              href={APP_STORE_URL}
+              href={UPSTREAM_GITHUB_URL}
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-foreground transition-colors"
             >
-              iOS App
+              Based on SupoClip
             </a>
             <span>&copy; {new Date().getFullYear()}</span>
           </nav>
@@ -1007,7 +1019,7 @@ export default function LandingPage() {
 /* ─── Hero Visual ─── */
 
 /**
- * Real SupoClip output. Clips were generated from the source video below and
+ * Real Katakata output. Clips were generated from the source video below and
  * trimmed to 15s previews for the landing page (see public/clips/).
  */
 const DEMO_SOURCE = {

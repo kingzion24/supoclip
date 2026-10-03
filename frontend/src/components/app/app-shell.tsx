@@ -76,7 +76,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         <Link href="/" className={cn("flex h-14 items-center gap-2 font-display text-lg font-bold tracking-tight", compact ? "justify-center" : "px-2")}>
           <Image src="/logo.png" alt="" width={24} height={24} className="size-6" priority />
-          {!compact && "SupoClip"}
+          {!compact && "Katakata"}
         </Link>
 
         <SidebarLink compact={compact} href="/" label="New generation" shortcut="N" className="mb-4 mt-1 bg-foreground text-background hover:bg-foreground/90 hover:text-background">
@@ -116,7 +116,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className={cn(user && "flex min-w-0 flex-1 flex-col pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0")}>
         {user ? <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b bg-background/80 px-4 backdrop-blur md:hidden">
           <Link href="/" className="flex items-center gap-2 font-display text-lg font-bold tracking-tight">
-            <Image src="/logo.png" alt="" width={22} height={22} className="size-[22px]" />SupoClip
+            <Image src="/logo.png" alt="" width={22} height={22} className="size-[22px]" />Katakata
           </Link>
           <button type="button" onClick={() => setPaletteOpen(true)} aria-label="Search generations" className="rounded-lg p-2 text-muted-foreground hover:bg-accent">
             <Search className="size-5" />
