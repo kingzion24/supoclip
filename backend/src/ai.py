@@ -13,9 +13,12 @@ import httpx
 from pydantic_ai import Agent, NativeOutput
 from pydantic_ai.exceptions import ModelHTTPError
 from pydantic_ai.models import Model
+from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.ollama import OllamaModel
 from pydantic_ai.models.openrouter import OpenRouterModel
+from pydantic_ai.profiles.anthropic import AnthropicModelProfile
 from pydantic_ai.profiles.openai import OpenAIModelProfile
+from pydantic_ai.providers.anthropic import AnthropicProvider
 from pydantic_ai.providers.ollama import OllamaProvider
 from pydantic_ai.providers.openrouter import OpenRouterProvider
 from pydantic import AliasChoices, BaseModel, Field, field_validator
@@ -504,6 +507,48 @@ def _get_missing_llm_key_error(model_name: str, runtime_config: Config) -> Optio
     return None
 
 
+# Claude models newer than the installed pydantic-ai. They support structured
+# outputs, adaptive thinking and effort, and reject forced tool calls, budget
+# thinking and sampling settings.
+CURRENT_CLAUDE_MODEL_PREFIXES = (
+    "claude-fable-5",
+    "claude-mythos-5",
+    "claude-opus-5",
+    "claude-sonnet-5",
+    "claude-opus-4-8",
+)
+
+
+def _anthropic_model_profile(model_name: str) -> AnthropicModelProfile:
+    profile = AnthropicProvider.model_profile(model_name)
+    if model_name.startswith(CURRENT_CLAUDE_MODEL_PREFIXES):
+        profile = profile.update(
+            AnthropicModelProfile(
+                supports_json_schema_output=True,
+                anthropic_supports_adaptive_thinking=True,
+                anthropic_supports_effort=True,
+                anthropic_supports_xhigh_effort=True,
+                anthropic_disallows_budget_thinking=True,
+                anthropic_disallows_sampling_settings=True,
+            )
+        )
+    return profile
+
+
+def _uses_native_output(runtime_config: Config) -> bool:
+    """Whether the analysis should use structured JSON output, not an output tool.
+
+    Current Claude models reject the forced tool call that tool-based output
+    sends, so they must use structured outputs (output_config.format).
+    """
+    provider, model_name = _split_llm_name(runtime_config.llm)
+    if provider == "openrouter":
+        return True
+    if provider == "anthropic":
+        return bool(_anthropic_model_profile(model_name).supports_json_schema_output)
+    return False
+
+
 def _build_transcript_model(runtime_config: Config) -> Model | str:
     provider, provider_model_name = _split_llm_name(runtime_config.llm)
     if provider == "openrouter":
@@ -525,6 +570,26 @@ def _build_transcript_model(runtime_config: Config) -> Model | str:
                 "openrouter_reasoning": {"effort": "low"},
                 "max_tokens": 8192,
             },
+        )
+    if provider == "anthropic":
+        settings: dict[str, Any] = {"max_tokens": 16000}
+        if provider_model_name.startswith(CURRENT_CLAUDE_MODEL_PREFIXES):
+            settings.update(
+                {
+                    # Clip ranking does not need deep reasoning; set it
+                    # explicitly because defaults differ between models.
+                    "anthropic_effort": "medium",
+                    # If a safety classifier declines (e.g. a clip about a
+                    # sensitive topic), retry on a suitable model server-side.
+                    "anthropic_betas": ["server-side-fallback-2026-07-01"],
+                    "extra_body": {"fallbacks": "default"},
+                }
+            )
+        return AnthropicModel(
+            provider_model_name,
+            provider=AnthropicProvider(api_key=runtime_config.anthropic_api_key),
+            profile=_anthropic_model_profile(provider_model_name),
+            settings=settings,
         )
     if provider != "ollama":
         return runtime_config.llm
@@ -567,7 +632,11 @@ def get_transcript_agent() -> Agent[None, TranscriptAnalysis]:
 
         _transcript_agent = Agent[None, TranscriptAnalysis](
             model=_build_transcript_model(runtime_config),
-            output_type=NativeOutput(TranscriptAnalysis, strict=True) if provider == "openrouter" else TranscriptAnalysis,
+            output_type=(
+                NativeOutput(TranscriptAnalysis, strict=True)
+                if _uses_native_output(runtime_config)
+                else TranscriptAnalysis
+            ),
             system_prompt=transcript_analysis_system_prompt,
             # Some local Ollama/OpenAI-compatible endpoints can return formatted
             # prose before settling on schema-valid JSON. Keep retries limited

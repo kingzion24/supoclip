@@ -51,3 +51,23 @@ def test_transcript_analysis_accepts_local_llm_broll_shape():
     assert broll.timestamp == "00:00"
     assert broll.duration == 3.0
     assert broll.search_term == "programming tutorial channels, AI comparison graphic"
+
+
+def test_current_claude_models_use_structured_output_not_forced_tools():
+    from types import SimpleNamespace
+
+    from pydantic_ai.models.anthropic import AnthropicModel
+
+    from src import ai
+
+    config = SimpleNamespace(llm="anthropic:claude-opus-5-5", anthropic_api_key="sk-ant-test")
+    model = ai._build_transcript_model(config)
+    assert isinstance(model, AnthropicModel)
+    assert ai._uses_native_output(config)
+    assert model.profile.supports_json_schema_output
+    assert model.settings["anthropic_effort"] == "medium"
+    assert model.settings["extra_body"] == {"fallbacks": "default"}
+
+    older = SimpleNamespace(llm="anthropic:claude-haiku-4-5", anthropic_api_key="sk-ant-test")
+    older_model = ai._build_transcript_model(older)
+    assert "anthropic_effort" not in older_model.settings
