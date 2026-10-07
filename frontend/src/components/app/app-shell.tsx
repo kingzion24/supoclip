@@ -5,7 +5,7 @@ import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Bot, Compass, CornerDownLeft, Film, LogOut, Plus, Search, Settings, Shield, Sparkles,
+  Bot, Clapperboard, Compass, CornerDownLeft, Film, LogOut, Plus, Search, Settings, Shield, Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import { signOut, useSession } from "@/lib/auth-client";
@@ -23,6 +23,7 @@ type NavItem = { href: string; label: string; icon: typeof Film; match: (path: s
 const NAV: NavItem[] = [
   { href: "/", label: "Create", icon: Sparkles, match: (p) => p === "/" },
   { href: "/discover", label: "Discover", icon: Compass, match: (p) => p.startsWith("/discover") },
+  { href: "/studio", label: "Studio", icon: Clapperboard, match: (p) => p.startsWith("/studio") },
   { href: "/list", label: "Library", icon: Film, match: (p) => p.startsWith("/list") || p.startsWith("/tasks") },
   { href: "/settings/api-keys", label: "Agents & API", icon: Bot, match: (p) => p.startsWith("/settings/api-keys") },
   { href: "/settings", label: "Settings", icon: Settings, match: (p) => p === "/settings" },
@@ -126,12 +127,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {children}
       </div>
 
-      {user ? <nav aria-label="Mobile navigation" className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t bg-background/90 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
+      {user ? <nav aria-label="Mobile navigation" className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t bg-background/90 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
         {NAV.map((item) => {
           const active = item.match(pathname);
           return (
             <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined}
-              className={cn("flex h-16 flex-col items-center justify-center gap-1 text-[11px] font-medium", active ? "text-foreground" : "text-muted-foreground")}>
+              className={cn("flex h-16 flex-col items-center justify-center gap-1 text-center text-[10px] font-medium leading-tight", active ? "text-foreground" : "text-muted-foreground")}>
               <item.icon className={cn("size-5", active && "text-brand")} />{item.label}
             </Link>
           );

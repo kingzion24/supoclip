@@ -174,12 +174,14 @@ def create_app(
     from .api.routes.billing import router as billing_router
     from .api.routes.api_keys import router as api_keys_router
     from .api.routes.discover import router as discover_router
+    from .api.routes.studio import router as studio_router
 
     app.include_router(media_router)
     app.include_router(feedback_router)
     app.include_router(billing_router)
     app.include_router(api_keys_router)
     app.include_router(discover_router)
+    app.include_router(studio_router)
 
     @app.get("/")
     def read_root():

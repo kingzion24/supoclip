@@ -96,6 +96,10 @@ utils/               → Thread pool helpers for blocking operations (async_help
    - Optional audio layers per task (`media/audio_enhancements.py`): background music from `backend/music/` and a spoken hook (Edge TTS, Swahili voices included), mixed in one ffmpeg pass with `-c:v copy`
 5. **Storage** → Clips to `{TEMP_DIR}/clips/`, metadata to PostgreSQL
 
+### Studio (stickman videos from an idea)
+
+`backend/src/studio/` turns a described idea into a narrated stickman video, adapted from the MIT [Stickman Video Director](https://github.com/kaomei/stickman-video-director) skill (Style 2B, Cinematic Story). Flow: `studio_direct` job (research in `research.py`: Claude's `web_search_20260209` server tool when `LLM` is `anthropic:*`, else or on failure Wikipedia lookups planned by the LLM; then the director's Kiswahili 5-stage proposal, `director.py`) → user edits/approves → `studio_prompts` job (one standalone Gemini Omni Flash prompt per ~10s scene; clips are generated with no voice or music) → user generates clips in Google Flow and uploads one per scene, or `studio_generate` makes them with Gemini Omni Flash (`generate.py`, `POST /v1beta/interactions`, `gemini-omni-1.1-flash`, 10s 720p inline, needs `GOOGLE_API_KEY` with billing; per-scene failures are kept in `generation_errors`) → `studio_render` job (`voice.py`: Edge TTS per sentence with stage-based pace/pitch, natural pauses, a voice polish chain and word timings from WordBoundary events, so captions need no transcription; `assemble.py`: fit each clip to its narration by trimming, ≤1.3x slow-down then a held last frame, hard-cut concat, quiet clip SFX + voice + sidechain-ducked music, word captions, headline and overlay phrases). State is file-based: `{TEMP_DIR}/studio/<id>/production.json` plus scene clips; finished videos go to `{TEMP_DIR}/clips/studio/`. Jobs record errors on the production instead of raising, so ARQ never retries paid AI calls. Frontend: `/studio` and `/studio/[id]`, proxied through `/api/studio`.
+
 ### Frontend Architecture
 
 - **Next.js 15** with App Router, React 19, TailwindCSS v4
@@ -159,6 +163,11 @@ PostgreSQL 15. Schema in `init.sql`. Mixed naming conventions:
 - `GET /discover/trending?region=TZ`, `GET /discover/search?q=&kind=videos|podcasts&min_minutes=` — Discover page (`discover.py`, yt-dlp search, no key); "Clip this" opens `/?url=<video>`
 - `POST /upload` — Upload video file
 - `GET /clips/{filename}` — Serve generated clips
+
+**Studio:**
+- `GET /studio/options`, `GET /studio/`, `POST /studio/` (idea, aspect_ratio, duration_seconds 20-180, voice, research), `GET|DELETE /studio/{id}`
+- `POST /studio/{id}/revise` (feedback), `PATCH /studio/{id}/scenes/{n}` (narration, overlay_text), `POST /studio/{id}/approve`, `POST /studio/{id}/retry`
+- `POST|DELETE /studio/{id}/scenes/{n}/clip` (multipart `clip`), `POST /studio/{id}/generate` (`scenes`, `replace`; Gemini), `POST /studio/{id}/render` (voice/caption/music settings), `GET /studio/{id}/files/final|scene-N`
 
 **API keys (programmatic access):**
 - `GET /api-keys/` — List the user's API keys (metadata only)
