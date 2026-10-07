@@ -1,0 +1,94 @@
+"""Structured outputs for the Studio director agents."""
+
+from typing import List, Literal
+
+from pydantic import BaseModel, Field
+
+Stage = Literal["hook", "disrupt", "secrets", "truth", "elevation"]
+
+
+class ResearchPlan(BaseModel):
+    """Encyclopedia searches that would ground the video in facts."""
+
+    queries: List[str] = Field(
+        description=(
+            "2-5 short English Wikipedia search queries (2-6 words each) for the "
+            "people, events, concepts and numbers the video should get right."
+        )
+    )
+
+
+class Beat(BaseModel):
+    window: Literal["0-3s", "3-7s", "7-10s"] = Field(description="Time window inside the scene")
+    action: str = Field(
+        description=(
+            "Concrete physical action of the stick figure and what changes on "
+            "screen in this window (English)."
+        )
+    )
+
+
+class Scene(BaseModel):
+    number: int = Field(description="Scene number starting at 1")
+    stage: Stage = Field(description="Which of the 5 narrative stages this scene serves")
+    narration: str = Field(
+        description=(
+            "Exact Kiswahili voice-over for this ~10 second scene, written for the "
+            "ear: 14-22 words, short sentences, numbers, dates, currency and "
+            "abbreviations written out as spoken words."
+        )
+    )
+    narration_english: str = Field(description="Faithful English translation of the narration, for review")
+    setting: str = Field(
+        description="Full-color cinematic environment for this scene, with lighting and mood (English)"
+    )
+    beats: List[Beat] = Field(description="Exactly three beats: 0-3s, 3-7s, 7-10s")
+    camera: str = Field(description="Camera movement and framing (English)")
+    sound_effects: str = Field(description="Synchronized sound effects on physical actions (English)")
+    opening_state: str = Field(description="What the first frame shows; must match the previous scene's ending")
+    ending_state: str = Field(description="What the last frame shows; the next scene opens on it")
+    overlay_text: str = Field(
+        description=(
+            "Optional 2-5 word Kiswahili on-screen phrase added in post-production, "
+            "or an empty string."
+        )
+    )
+
+
+class Proposal(BaseModel):
+    """The director's proposal shown to the user for approval."""
+
+    title: str = Field(description="Video title in Kiswahili")
+    title_english: str = Field(description="The title in English")
+    core_message: str = Field(description="The one idea viewers should leave with (Kiswahili)")
+    hook_title: str = Field(
+        description="3-8 word Kiswahili headline burned on screen during the first seconds"
+    )
+    tone: str = Field(description="Emotional tone and pacing (English)")
+    music_mood: str = Field(description="Background music mood, instruments and tempo (English)")
+    narrator: str = Field(
+        description="One-line narrator persona and delivery, e.g. warm, confident storyteller (English)"
+    )
+    scenes: List[Scene] = Field(description="Exactly the requested number of scenes, in order")
+    post_caption: str = Field(
+        description="1-2 sentence Kiswahili caption to post with the video, ending with a question"
+    )
+    hashtags: List[str] = Field(description="4-8 hashtags without spaces, mostly Kiswahili or East African")
+    fact_check_notes: List[str] = Field(
+        description=(
+            "Each factual claim the narration makes and the research source it "
+            "rests on, or 'general knowledge'. Empty if the script makes no claims."
+        )
+    )
+
+
+class ScenePrompt(BaseModel):
+    number: int = Field(description="Scene number")
+    prompt: str = Field(description="The complete standalone English video-generation prompt")
+
+
+class PromptPackage(BaseModel):
+    continuity: str = Field(
+        description="Short summary of the character, environment, audio and transition locks (English)"
+    )
+    prompts: List[ScenePrompt] = Field(description="One prompt per scene, in order")
