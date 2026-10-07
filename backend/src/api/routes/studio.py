@@ -55,6 +55,11 @@ class Revision(BaseModel):
     feedback: str = Field(min_length=3, max_length=2000)
 
 
+class GenerateRequest(BaseModel):
+    scenes: Optional[list[int]] = None
+    replace: bool = False
+
+
 class RenderSettings(BaseModel):
     voice: Optional[str] = None
     voice_speed: Optional[int] = Field(default=None, ge=-20, le=20)
@@ -126,6 +131,7 @@ async def options():
         "music": list_music_tracks(),
         "durations": [30, 60, 90, 120, 180],
         "max_duration": MAX_DURATION,
+        "auto_generate": bool(get_config().google_api_key),
     }
 
 
@@ -209,11 +215,14 @@ async def retry(production_id: str, request: Request, db: AsyncSession = Depends
     if status != "error" and not stuck:
         raise HTTPException(409, "Nothing to retry")
     stage = production.get("error_stage") or {
-        "prompting": "prompts", "rendering": "render",
+        "prompting": "prompts", "rendering": "render", "generating": "generate",
     }.get(status, "direct")
     if stage == "prompts":
         store.update(production_id, status="prompting", error=None)
         await _enqueue("studio_prompts", production_id)
+    elif stage == "generate":
+        store.update(production_id, status="generating", error=None)
+        await _enqueue("studio_generate", production_id, _missing_clips(production))
     elif stage == "render":
         store.update(production_id, status="rendering", error=None)
         await _enqueue("studio_render", production_id)
@@ -305,6 +314,46 @@ async def delete_clip(production_id: str, number: int, request: Request, db: Asy
     _owned(production_id, user_id)
     (store.production_dir(production_id) / store.scene_clip_name(number)).unlink(missing_ok=True)
     return {"deleted": True}
+
+
+def _missing_clips(production: Dict[str, Any]) -> list[int]:
+    directory = store.production_dir(production["id"])
+    return [
+        item["number"]
+        for item in ((production.get("prompts") or {}).get("prompts") or [])
+        if not (directory / store.scene_clip_name(item["number"])).exists()
+    ]
+
+
+@router.post("/{production_id}/generate", status_code=202)
+async def generate(
+    production_id: str,
+    request: Request,
+    body: Optional[GenerateRequest] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate scene clips with Gemini Omni Flash (paid, needs GOOGLE_API_KEY)."""
+    user_id = await _user(request, db)
+    production = _owned(production_id, user_id)
+    _require_idle(production)
+    if not production.get("prompts"):
+        raise HTTPException(409, "Approve the script first so the scene prompts exist")
+    if not get_config().google_api_key:
+        raise HTTPException(400, "Add GOOGLE_API_KEY (with billing on) to .env to generate clips automatically")
+    body = body or GenerateRequest()
+    available = {item["number"] for item in production["prompts"]["prompts"]}
+    if body.scenes:
+        numbers = sorted({number for number in body.scenes if number in available})
+        if not body.replace:
+            missing = set(_missing_clips(production))
+            numbers = [number for number in numbers if number in missing] or numbers
+    else:
+        numbers = _missing_clips(production)
+    if not numbers:
+        raise HTTPException(409, "Every scene already has a clip")
+    store.update(production_id, status="generating", progress_message="Starting Gemini…", error=None)
+    await _enqueue("studio_generate", production_id, numbers)
+    return {"status": "generating", "scenes": numbers}
 
 
 @router.post("/{production_id}/render", status_code=202)

@@ -24,7 +24,7 @@ _ID_PATTERN = re.compile(r"^[a-f0-9]{32}$")
 # Lifecycle: researching -> directing -> proposal -> prompting -> shooting
 #            -> rendering -> done. Any step can end in "error"; the user can
 #            retry from the last good state.
-BUSY_STATUSES = {"researching", "directing", "prompting", "rendering"}
+BUSY_STATUSES = {"researching", "directing", "prompting", "generating", "rendering"}
 # Jobs save progress at least every few minutes; a busy production untouched
 # for longer than this lost its worker (e.g. a restart) and may be retried.
 STUCK_AFTER_SECONDS = 45 * 60

@@ -308,3 +308,140 @@ async def test_retry_restarts_a_stuck_render(client, monkeypatch):
     assert (await http.get(f"/studio/{created['id']}")).json()["stuck"] is True
     assert (await http.post(f"/studio/{created['id']}/retry")).status_code == 202
     enqueue.assert_awaited_with("studio_render", created["id"])
+
+
+# --- Gemini clip generation ----------------------------------------------
+
+import base64 as _base64
+
+import httpx as _httpx
+
+from src.studio import generate as gemini
+
+
+def test_gemini_request_and_video_extraction():
+    body = gemini.build_request("a stick figure runs", "16:9")
+    assert body["model"] == "gemini-omni-1.1-flash"
+    assert body["response_format"] == {
+        "type": "video", "aspect_ratio": "16:9", "resolution": "720p", "duration": "10s", "delivery": "inline",
+    }
+    interaction = {"steps": [
+        {"type": "user_input"},
+        {"type": "model_output", "content": [{"type": "text"}, {"type": "video", "data": "QQ=="}]},
+    ]}
+    assert gemini.extract_video(interaction) == {"data": "QQ==", "uri": None}
+    with pytest.raises(RuntimeError, match="no video"):
+        gemini.extract_video({"steps": [], "status": "failed"})
+
+
+def test_generate_clip_saves_inline_video(tmp_path, monkeypatch):
+    seen = {}
+
+    def handler(request):
+        seen["key"] = request.headers["x-goog-api-key"]
+        seen["revision"] = request.headers["api-revision"]
+        video = _base64.b64encode(b"v" * 5000).decode()
+        return _httpx.Response(200, json={"status": "completed", "steps": [
+            {"type": "model_output", "content": [{"type": "video", "mime_type": "video/mp4", "data": video}]}]})
+
+    real_client = _httpx.Client
+    monkeypatch.setattr(gemini.httpx, "Client", lambda **kw: real_client(transport=_httpx.MockTransport(handler)))
+    gemini.generate_clip("prompt", "9:16", "key-1", tmp_path / "scene-01.mp4")
+    assert (tmp_path / "scene-01.mp4").read_bytes() == b"v" * 5000
+    assert seen == {"key": "key-1", "revision": gemini.API_REVISION}
+
+
+def test_generate_clip_explains_rejected_keys(tmp_path, monkeypatch):
+    handler = lambda request: _httpx.Response(403, json={"error": {"message": "API key not valid"}})
+    real_client = _httpx.Client
+    monkeypatch.setattr(gemini.httpx, "Client", lambda **kw: real_client(transport=_httpx.MockTransport(handler)))
+    with pytest.raises(RuntimeError, match="rejected the API key"):
+        gemini.generate_clip("prompt", "9:16", "bad", tmp_path / "x.mp4")
+    assert not (tmp_path / "x.mp4").exists()
+
+
+async def test_generate_job_keeps_good_scenes_and_reports_failures(studio_dirs, monkeypatch):
+    production_id = store.new_production_id()
+    with store.production_lock(production_id):
+        store.save({
+            "id": production_id, "user_id": "me", "brief": {"aspect_ratio": "9:16"},
+            "prompts": {"continuity": "", "prompts": [{"number": 1, "prompt": "a"}, {"number": 2, "prompt": "b"}]},
+        })
+    monkeypatch.setattr(jobs, "get_config", lambda: SimpleNamespace(google_api_key="k"))
+
+    def fake_generate(prompt, aspect, key, path):
+        if prompt == "b":
+            raise RuntimeError("blocked")
+        path.write_bytes(b"ok")
+
+    monkeypatch.setattr(jobs, "generate_clip", fake_generate)
+    result = await jobs.studio_generate({}, production_id, [1, 2])
+    saved = store.load(production_id)
+    assert result == {"status": "shooting", "failed": ["2"]}
+    assert saved["generation_errors"] == {"2": "blocked"}
+    assert (store.production_dir(production_id) / "scene-01.mp4").exists()
+
+
+async def test_generate_route_needs_google_key_and_prompts(client, monkeypatch):
+    http, enqueue = client
+    created = (await http.post("/studio/", json={"idea": "Historia ya Zanzibar kwa ufupi"})).json()
+    store.update(created["id"], status="proposal", proposal=director.normalize_proposal(make_proposal(2), 2))
+    monkeypatch.setattr(studio_routes, "get_config", lambda: SimpleNamespace(google_api_key="k"))
+    assert (await http.post(f"/studio/{created['id']}/generate")).status_code == 409
+    store.update(created["id"], status="shooting", prompts={"continuity": "", "prompts": [
+        {"number": 1, "prompt": "a"}, {"number": 2, "prompt": "b"}]})
+    response = await http.post(f"/studio/{created['id']}/generate")
+    assert response.status_code == 202 and response.json()["scenes"] == [1, 2]
+    enqueue.assert_awaited_with("studio_generate", created["id"], [1, 2])
+    store.update(created["id"], status="shooting")
+    monkeypatch.setattr(studio_routes, "get_config", lambda: SimpleNamespace(google_api_key=None))
+    assert (await http.post(f"/studio/{created['id']}/generate")).status_code == 400
+
+
+# --- Claude web research --------------------------------------------------
+
+
+def _block(**fields):
+    return SimpleNamespace(**fields)
+
+
+async def test_claude_research_collects_notes_and_cited_sources(monkeypatch):
+    calls = []
+    responses = [
+        _block(stop_reason="pause_turn", content=[
+            _block(type="web_search_tool_result", content=[_block(url="https://bot.go.tz", title="BoT")]),
+        ]),
+        _block(stop_reason="end_turn", content=[
+            _block(type="text", text="1. Inflation was low.", citations=[
+                _block(url="https://bot.go.tz", title="BoT", cited_text="Inflation  stood at 3%")]),
+            _block(type="web_search_tool_result", content=_block(error_code="max_uses_exceeded")),
+        ]),
+    ]
+
+    class FakeMessages:
+        async def create(self, **kwargs):
+            calls.append(kwargs)
+            return responses[len(calls) - 1]
+
+    fake = SimpleNamespace(beta=SimpleNamespace(messages=FakeMessages()))
+    import anthropic
+    monkeypatch.setattr(anthropic, "AsyncAnthropic", lambda **kw: fake)
+    result = await research.research_with_claude("Mfumuko wa bei Tanzania", "claude-opus-5-5", "key")
+    assert result["method"] == "web" and result["notes"] == "1. Inflation was low."
+    assert result["sources"] == [{"title": "BoT", "url": "https://bot.go.tz", "extract": "Inflation stood at 3%"}]
+    assert calls[0]["tools"][0]["type"] == "web_search_20260209"
+    assert calls[0]["extra_body"] == {"fallbacks": "default"}
+    assert len(calls[1]["messages"]) == 2  # the paused turn was continued
+    assert "Inflation was low" in research.format_web_notes(result)
+
+
+async def test_research_falls_back_to_wikipedia(studio_dirs, monkeypatch):
+    production_id = store.new_production_id()
+    with store.production_lock(production_id):
+        store.save({"id": production_id, "user_id": "me", "brief": {}})
+    monkeypatch.setattr(jobs, "_anthropic_model", lambda: ("claude-opus-5-5", "key"))
+    monkeypatch.setattr(jobs, "research_with_claude", AsyncMock(side_effect=RuntimeError("web search disabled")))
+    monkeypatch.setattr(jobs, "plan_research", AsyncMock(return_value=["q"]))
+    monkeypatch.setattr(jobs, "gather_sources", lambda queries: [{"title": "W", "url": "u", "extract": "e"}])
+    result = await jobs._research(production_id, {"idea": "x"})
+    assert result["method"] == "wikipedia" and result["sources"][0]["title"] == "W"

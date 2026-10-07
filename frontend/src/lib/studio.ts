@@ -44,7 +44,7 @@ export interface StudioBrief {
 }
 
 export type StudioStatus =
-  | "researching" | "directing" | "proposal" | "prompting" | "shooting" | "rendering" | "done" | "error";
+  | "researching" | "directing" | "proposal" | "prompting" | "shooting" | "generating" | "rendering" | "done" | "error";
 
 export interface Production {
   id: string;
@@ -55,7 +55,13 @@ export interface Production {
   created_at: string;
   updated_at: string;
   brief: StudioBrief;
-  research: { queries: string[]; sources: { title: string; url: string; extract: string }[] } | null;
+  research: {
+    method?: "web" | "wikipedia";
+    notes?: string;
+    queries?: string[];
+    sources: { title: string; url: string; extract: string }[];
+  } | null;
+  generation_errors?: Record<string, string>;
   proposal: StudioProposal | null;
   prompts: { continuity: string; prompts: { number: number; prompt: string }[] } | null;
   approved_at: string | null;
@@ -82,9 +88,10 @@ export interface StudioOptions {
   music: string[];
   durations: number[];
   max_duration: number;
+  auto_generate: boolean;
 }
 
-export const BUSY_STATUSES: StudioStatus[] = ["researching", "directing", "prompting", "rendering"];
+export const BUSY_STATUSES: StudioStatus[] = ["researching", "directing", "prompting", "generating", "rendering"];
 
 export const STAGE_LABELS: Record<Stage, string> = {
   hook: "Hook",
@@ -100,6 +107,7 @@ export const STATUS_LABELS: Record<StudioStatus, string> = {
   proposal: "Review script",
   prompting: "Writing prompts",
   shooting: "Make the clips",
+  generating: "Generating clips",
   rendering: "Rendering",
   done: "Done",
   error: "Needs attention",

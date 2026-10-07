@@ -145,7 +145,7 @@ export default function ProductionPage({ params }: { params: Promise<{ id: strin
 
       <IdeaCard production={production} />
 
-      {production.research && production.research.sources.length > 0 && <ResearchCard production={production} />}
+      {production.research && (production.research.sources.length > 0 || production.research.notes) && <ResearchCard production={production} />}
 
       {proposal && (
         <ProposalSection
@@ -158,7 +158,7 @@ export default function ProductionPage({ params }: { params: Promise<{ id: strin
       )}
 
       {proposal && prompts && (
-        <ShootingSection production={production} disabled={busy} reload={load} />
+        <ShootingSection production={production} disabled={busy || busyAction !== null} reload={load} act={act} autoGenerate={Boolean(options?.auto_generate)} />
       )}
 
       {proposal && prompts && (
@@ -204,7 +204,12 @@ function ResearchCard({ production }: { production: Production }) {
   const sources = production.research?.sources || [];
   return (
     <details className="mb-6 rounded-xl border bg-card p-4">
-      <summary className="cursor-pointer text-sm font-medium">Facts looked up ({sources.length} sources)</summary>
+      <summary className="cursor-pointer text-sm font-medium">
+        Facts looked up {production.research?.method === "web" ? "on the web" : "on Wikipedia"} ({sources.length} sources)
+      </summary>
+      {production.research?.notes && (
+        <p className="mt-3 whitespace-pre-wrap rounded-lg bg-muted/50 p-3 text-xs">{production.research.notes}</p>
+      )}
       <ol className="mt-3 space-y-3">
         {sources.map((source, index) => (
           <li key={source.url} className="text-xs">
@@ -346,7 +351,13 @@ function SceneCard({ productionId, scene, disabled }: { productionId: string; sc
   );
 }
 
-function ShootingSection({ production, disabled, reload }: { production: Production; disabled: boolean; reload: () => Promise<void> }) {
+function ShootingSection({ production, disabled, reload, act, autoGenerate }: {
+  production: Production;
+  disabled: boolean;
+  reload: () => Promise<void>;
+  act: (name: string, path: string, init?: RequestInit) => Promise<boolean>;
+  autoGenerate: boolean;
+}) {
   const prompts = production.prompts!;
   const scenes = production.proposal!.scenes;
   const done = scenes.filter((scene) => production.clips[String(scene.number)]).length;
@@ -358,6 +369,20 @@ function ShootingSection({ production, disabled, reload }: { production: Product
         <li>Download the clip you like and upload it to that scene here.</li>
         <li>When every scene has a clip, render. Katakata adds the Kiswahili voice, captions and music.</li>
       </ol>
+      <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border bg-card p-4">
+        <Button
+          disabled={disabled || !autoGenerate || done === scenes.length}
+          onClick={() => void act("generate", "/generate", jsonInit({}))}
+        >
+          <Wand2 className="size-4" />
+          Generate {done ? "missing clips" : "all clips"} with Gemini
+        </Button>
+        <span className="text-xs text-muted-foreground">
+          {autoGenerate
+            ? `Uses your Google API key: roughly $1 per scene at 720p, about a minute each. ${scenes.length - done} scene${scenes.length - done === 1 ? "" : "s"} to go.`
+            : "Add GOOGLE_API_KEY (with billing on) to .env to generate clips automatically, or use Google Flow below."}
+        </span>
+      </div>
       <details className="mb-4 rounded-xl border bg-card p-4 text-xs">
         <summary className="cursor-pointer text-sm font-medium">Continuity notes</summary>
         <p className="mt-2 whitespace-pre-wrap text-muted-foreground">{prompts.continuity}</p>
@@ -372,6 +397,9 @@ function ShootingSection({ production, disabled, reload }: { production: Product
             hasClip={Boolean(production.clips[String(item.number)])}
             disabled={disabled}
             reload={reload}
+            error={production.generation_errors?.[String(item.number)]}
+            onGenerate={autoGenerate ? () => void act("generate", "/generate", jsonInit({ scenes: [item.number], replace: true })) : undefined}
+            version={production.updated_at}
           />
         ))}
       </div>
@@ -379,8 +407,9 @@ function ShootingSection({ production, disabled, reload }: { production: Product
   );
 }
 
-function ShotCard({ productionId, number, prompt, hasClip, disabled, reload }: {
+function ShotCard({ productionId, number, prompt, hasClip, disabled, reload, error, onGenerate, version: savedVersion }: {
   productionId: string; number: number; prompt: string; hasClip: boolean; disabled: boolean; reload: () => Promise<void>;
+  error?: string; onGenerate?: () => void; version: string;
 }) {
   const [uploading, setUploading] = useState(false);
   const [version, setVersion] = useState(0);
@@ -425,8 +454,8 @@ function ShotCard({ productionId, number, prompt, hasClip, disabled, reload }: {
       <div className="flex flex-col gap-2">
         {hasClip ? (
           <video
-            key={version}
-            src={`/api/studio/${productionId}/files/scene-${number}?v=${version}`}
+            key={`${version}-${savedVersion}`}
+            src={`/api/studio/${productionId}/files/scene-${number}?v=${version}-${encodeURIComponent(savedVersion)}`}
             className="aspect-video w-full rounded-lg bg-black object-contain"
             controls muted playsInline preload="metadata"
           />
@@ -443,6 +472,12 @@ function ShotCard({ productionId, number, prompt, hasClip, disabled, reload }: {
           {uploading ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
           {hasClip ? "Replace clip" : "Upload clip"}
         </Button>
+        {onGenerate && (
+          <Button size="sm" variant="outline" disabled={disabled || uploading} onClick={onGenerate}>
+            <Wand2 className="size-3.5" />{hasClip ? "Regenerate" : "Generate"} with Gemini
+          </Button>
+        )}
+        {error && <p className="text-[11px] text-red-700">{error}</p>}
         <a href={FLOW_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-1 text-xs text-muted-foreground hover:text-foreground">
           Open Google Flow <ExternalLink className="size-3" />
         </a>

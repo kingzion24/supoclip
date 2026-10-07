@@ -17,8 +17,10 @@ from ..media.audio_enhancements import resolve_music_track
 from ..utils.async_helpers import run_in_thread
 from . import store
 from .assemble import assemble_video
+from .generate import generate_clip
 from .director import plan_research, write_proposal, write_scene_prompts
-from .research import format_research_notes, gather_sources
+from ..config import get_config
+from .research import format_research_notes, format_web_notes, gather_sources, research_with_claude
 from .voice import voice_scene
 
 logger = logging.getLogger(__name__)
@@ -41,6 +43,35 @@ def _progress(production_id: str, status: str, message: str) -> None:
     store.update(production_id, status=status, progress_message=message, error=None, error_stage=None)
 
 
+def _anthropic_model() -> Optional[tuple]:
+    """(model, api_key) when the configured LLM is a Claude model with a key."""
+    config = get_config()
+    provider, _, model = (config.llm or "").partition(":")
+    if provider.strip().lower() == "anthropic" and model.strip() and config.anthropic_api_key:
+        return model.strip(), config.anthropic_api_key
+    return None
+
+
+async def _research(production_id: str, brief: Dict[str, Any]) -> Dict[str, Any]:
+    """Web research with Claude when available, else Wikipedia. Never fails:
+    a video can still be written from the brief alone."""
+    claude = _anthropic_model()
+    if claude:
+        _progress(production_id, "researching", "Searching the web for facts…")
+        try:
+            return await research_with_claude(brief["idea"], *claude)
+        except Exception as error:
+            logger.warning("Claude web research failed, using Wikipedia: %s", error)
+    _progress(production_id, "researching", "Looking up facts…")
+    try:
+        queries = await plan_research(brief)
+        sources = await run_in_thread(gather_sources, queries)
+    except Exception as error:
+        logger.warning("Research failed, writing without notes: %s", error)
+        queries, sources = [], []
+    return {"method": "wikipedia", "queries": queries, "sources": sources}
+
+
 async def studio_direct(ctx: Dict[str, Any], production_id: str, feedback: Optional[str] = None) -> Dict[str, Any]:
     """Research the topic (once) and write or revise the director's proposal."""
     production = store.load(production_id)
@@ -51,17 +82,17 @@ async def studio_direct(ctx: Dict[str, Any], production_id: str, feedback: Optio
     try:
         research = production.get("research")
         if brief.get("research") and research is None:
-            _progress(production_id, "researching", "Looking up facts…")
-            queries = await plan_research(brief)
-            sources = await run_in_thread(gather_sources, queries)
-            research = {"queries": queries, "sources": sources}
+            research = await _research(production_id, brief)
             store.update(production_id, research=research)
         _progress(
             production_id,
             "directing",
             "Revising the script…" if feedback else "Writing the script and scenes…",
         )
-        notes = format_research_notes((research or {}).get("sources") or [])
+        if (research or {}).get("method") == "web":
+            notes = format_web_notes(research)
+        else:
+            notes = format_research_notes((research or {}).get("sources") or [])
         proposal = await write_proposal(brief, notes, feedback, previous if feedback else None)
         store.update(
             production_id,
@@ -91,6 +122,44 @@ async def studio_prompts(ctx: Dict[str, Any], production_id: str) -> Dict[str, A
         return {"status": "shooting"}
     except Exception as error:
         return _fail(production_id, "prompts", error, "proposal")
+
+
+async def studio_generate(ctx: Dict[str, Any], production_id: str, numbers: Optional[list] = None) -> Dict[str, Any]:
+    """Generate scene clips with Gemini Omni Flash. Scenes that fail are
+    reported individually; the rest keep their clips."""
+    production = store.load(production_id)
+    if not production or not production.get("prompts"):
+        return {"status": "missing"}
+    api_key = get_config().google_api_key
+    directory = store.production_dir(production_id)
+    prompts = {item["number"]: item["prompt"] for item in production["prompts"]["prompts"]}
+    wanted = [number for number in (numbers or sorted(prompts)) if number in prompts]
+    failures: Dict[str, str] = {}
+    try:
+        if not api_key:
+            raise RuntimeError("Add GOOGLE_API_KEY (with billing on) to .env to generate clips automatically.")
+        for index, number in enumerate(wanted, start=1):
+            _progress(
+                production_id, "generating",
+                f"Generating scene {number} with Gemini ({index} of {len(wanted)}, about a minute each)…",
+            )
+            try:
+                await run_in_thread(
+                    generate_clip, prompts[number], production["brief"]["aspect_ratio"],
+                    api_key, directory / store.scene_clip_name(number),
+                )
+            except Exception as error:
+                logger.warning("Gemini failed for scene %s of %s: %s", number, production_id, error)
+                failures[str(number)] = str(error)
+                if "API key" in str(error) or "quota" in str(error):
+                    break
+        if failures and len(failures) == len(wanted):
+            raise RuntimeError(next(iter(failures.values())))
+        store.update(production_id, status="shooting", progress_message=None, generation_errors=failures)
+        return {"status": "shooting", "failed": list(failures)}
+    except Exception as error:
+        store.update(production_id, generation_errors=failures)
+        return _fail(production_id, "generate", error, "shooting")
 
 
 def _voice_key(scene: Dict[str, Any], voice: str, speed: int) -> str:
