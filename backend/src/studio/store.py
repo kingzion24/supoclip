@@ -132,3 +132,46 @@ def list_for_user(user_id: str) -> List[Dict[str, Any]]:
 
 def scene_clip_name(scene_number: int) -> str:
     return f"scene-{scene_number:02d}.mp4"
+
+
+# --- Reusable assets: inspiration styles and cloned voices -----------------
+
+ASSET_KINDS = {"styles", "voices"}
+ASSET_FILE = "record.json"
+
+
+def asset_dir(kind: str, asset_id: str) -> Path:
+    if kind not in ASSET_KINDS or not valid_id(asset_id):
+        raise ValueError("Invalid asset")
+    return Path(get_config().temp_dir) / "studio_assets" / kind / asset_id
+
+
+def load_asset(kind: str, asset_id: str) -> Optional[Dict[str, Any]]:
+    try:
+        path = asset_dir(kind, asset_id) / ASSET_FILE
+    except ValueError:
+        return None
+    return json.loads(path.read_text()) if path.exists() else None
+
+
+def save_asset(kind: str, record: Dict[str, Any]) -> Dict[str, Any]:
+    record["updated_at"] = now_iso()
+    _atomic_write(asset_dir(kind, record["id"]) / ASSET_FILE, record)
+    return record
+
+
+def update_asset(kind: str, asset_id: str, **changes: Any) -> Dict[str, Any]:
+    record = load_asset(kind, asset_id)
+    if record is None:
+        raise FileNotFoundError(asset_id)
+    record.update(changes)
+    return save_asset(kind, record)
+
+
+def list_assets(kind: str, user_id: str) -> List[Dict[str, Any]]:
+    root = Path(get_config().temp_dir) / "studio_assets" / kind
+    if not root.exists():
+        return []
+    records = [load_asset(kind, item.name) for item in root.iterdir() if item.is_dir() and valid_id(item.name)]
+    owned = [record for record in records if record and record.get("user_id") == user_id]
+    return sorted(owned, key=lambda record: record.get("created_at", ""), reverse=True)

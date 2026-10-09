@@ -23,7 +23,7 @@ from ..ai import (
 )
 from ..config import get_config
 from ..runtime_settings import apply_settings_to_process_env
-from .models import PromptPackage, Proposal, ResearchPlan
+from .models import DocumentaryOutline, PromptPackage, Proposal, ResearchPlan, SceneBatch
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,7 @@ STORY ARCHITECTURE (5-stage high-completion arc, scaled to the number of scenes)
 3. secrets: reveal the hidden mechanism, insider detail or real obstacle.
 4. truth: the core insight about money, people or the world, with a satisfying payoff.
 5. elevation: a memorable closing line plus one question that invites comments.
-Scene 1 is always the hook and the last scene is always elevation. Distribute the middle stages over the remaining scenes.
+Scene 1 is always the hook and the last scene is always elevation. Distribute the middle stages over the remaining scenes. Use only these five stage names.
 
 KISWAHILI NARRATION (it is read aloud by a text-to-speech voice, so write for the ear):
 - Natural, modern Tanzanian Kiswahili as a good storyteller speaks it. Light everyday English loanwords are fine where Tanzanians use them; no Sheng unless the brief asks for it.
@@ -104,8 +104,32 @@ Write each prompt in English, as flowing text, in this order:
 Never include the Kiswahili narration, hexadecimal or RGB colors, or any instruction to show text."""
 
 
+DOCUMENTARY_SYSTEM_PROMPT = DIRECTOR_SYSTEM_PROMPT.split("STORY ARCHITECTURE")[0] + """GENRE: DOCUMENTARY. You are making a narrated stickman documentary (2-10 minutes) for YouTube in the tradition of great explainer documentaries: a real story told with suspense, specific detail and a clear point of view.
+
+DOCUMENTARY ARCHITECTURE (use these stage names):
+1. cold_open: open inside the most dramatic or puzzling moment of the story, or with a question the whole film answers. No greeting, no "in this video".
+2. context: the place, time and people; what the world looked like before.
+3. rising: the chain of events or causes, building tension; each scene adds one new fact or turn.
+4. turning_point: the revelation, decision or event that changed everything.
+5. aftermath: consequences, including for Tanzania and East Africa when relevant.
+6. reflection: what it means today, a memorable final line, and a question for the comments.
+Split the film into chapters; end each chapter on a small cliffhanger or open question that pulls into the next.
+
+NARRATION: measured documentary storytelling, 16-24 Kiswahili words per ~10-second scene, concrete names, places, dates and numbers from the research notes, sensory detail, varied sentence length. Write numbers, dates and currency as spoken words. One continuous story across all scenes.
+
+FACTS: state a specific fact only if it appears in the research notes or is widely known general knowledge; never invent quotes, statistics or events. Keep the narration honest about uncertainty ("inasemekana", "wanahistoria wengi wanaamini") when sources disagree.
+
+VISUALS (Style 2B, Cinematic Story): the red-beanie stick figure is the guide who walks through the story; other people appear as plain black stick figures distinguished only by simple props or clothing (a crown, a hat, a uniform, a bag of coins), never with faces. Use establishing shots, period-appropriate settings, icon-only maps and timelines, and recurring visual motifs. Three beats per scene with concrete actions, no visible writing, and each scene's opening_state matches the previous scene's ending_state.
+
+Write titles, narration, captions and hashtags in Kiswahili; visual, camera, sound and setting directions in English."""
+
+GENRES = {"explainer", "documentary"}
+MAX_SCENES_PER_CALL = 10
+PROMPTS_PER_CALL = 8
+
+
 def scene_count(duration_seconds: int) -> int:
-    return max(1, min(30, int(int(duration_seconds) / SCENE_SECONDS + 0.5)))
+    return max(1, min(60, int(int(duration_seconds) / SCENE_SECONDS + 0.5)))
 
 
 def _build_agent(output_type: Type[T], system_prompt: str) -> Agent[None, T]:
@@ -149,24 +173,42 @@ def build_research_prompt(brief: Dict[str, Any]) -> str:
     )
 
 
+def _style_section(style_guide: Optional[str]) -> str:
+    if not style_guide:
+        return ""
+    return (
+        "STYLE INSPIRATION from channels the creator admires. Learn their techniques "
+        "(hooks, pacing, structure, narration voice, visual ideas). Never copy their "
+        "wording, titles, stories or catchphrases:\n" + style_guide
+    )
+
+
+def _common_parts(brief: Dict[str, Any], research_notes: str, style_guide: Optional[str]) -> List[str]:
+    parts = [
+        f"Idea from the creator: {brief['idea']}",
+        f"Aspect ratio: {brief['aspect_ratio']}",
+        "Style: 2B Cinematic Story (red beanie and yellow t-shirt stick figure in full-color cinematic settings).",
+        research_notes or "No research notes: use only the creator's idea and widely known general knowledge.",
+    ]
+    style = _style_section(style_guide)
+    if style:
+        parts.append(style)
+    return parts
+
+
 def build_proposal_prompt(
     brief: Dict[str, Any],
     research_notes: str = "",
     feedback: Optional[str] = None,
     previous: Optional[Dict[str, Any]] = None,
+    style_guide: Optional[str] = None,
 ) -> str:
     count = scene_count(brief["duration_seconds"])
     parts = [
-        f"Write the director's proposal for this video.",
-        f"Idea from the creator: {brief['idea']}",
-        f"Aspect ratio: {brief['aspect_ratio']}",
+        "Write the director's proposal for this video.",
         f"Length: {count * SCENE_SECONDS} seconds = exactly {count} scenes of about ten seconds.",
-        "Style: 2B Cinematic Story (red beanie and yellow t-shirt stick figure in full-color cinematic settings).",
+        *_common_parts(brief, research_notes, style_guide),
     ]
-    if research_notes:
-        parts.append(research_notes)
-    else:
-        parts.append("No research notes: use only the creator's idea and widely known general knowledge.")
     if previous and feedback:
         parts.append(
             "PREVIOUS PROPOSAL (revise it; keep what the feedback does not ask to change):\n"
@@ -176,7 +218,75 @@ def build_proposal_prompt(
     return "\n\n".join(parts)
 
 
-def build_prompts_prompt(brief: Dict[str, Any], proposal: Dict[str, Any]) -> str:
+def build_outline_prompt(
+    brief: Dict[str, Any],
+    research_notes: str = "",
+    feedback: Optional[str] = None,
+    previous: Optional[Dict[str, Any]] = None,
+    style_guide: Optional[str] = None,
+) -> str:
+    count = scene_count(brief["duration_seconds"])
+    parts = [
+        "Write the outline of this documentary: its title, tone and chapters.",
+        f"Length: {count * SCENE_SECONDS} seconds = exactly {count} scenes of about ten seconds in total, "
+        "split over the chapters.",
+        *_common_parts(brief, research_notes, style_guide),
+    ]
+    if previous and feedback:
+        summary = {
+            key: previous.get(key)
+            for key in ("title", "core_message", "hook_title", "tone", "chapters")
+        }
+        summary["narration"] = [scene.get("narration") for scene in previous.get("scenes", [])]
+        parts.append(
+            "PREVIOUS VERSION (revise it; keep what the feedback does not ask to change):\n"
+            + json.dumps(summary, ensure_ascii=False)
+        )
+        parts.append(f"CREATOR FEEDBACK: {feedback}")
+    return "\n\n".join(parts)
+
+
+def build_chapter_prompt(
+    brief: Dict[str, Any],
+    outline: Dict[str, Any],
+    chapter_index: int,
+    first_number: int,
+    count: int,
+    previous_scenes: List[Dict[str, Any]],
+    research_notes: str = "",
+    feedback: Optional[str] = None,
+    style_guide: Optional[str] = None,
+) -> str:
+    chapter = outline["chapters"][chapter_index]
+    last = previous_scenes[-1] if previous_scenes else None
+    recent = [scene.get("narration") for scene in previous_scenes[-3:]]
+    parts = [
+        f"Write scenes {first_number} to {first_number + count - 1} (exactly {count} scenes) of this documentary: "
+        f"chapter {chapter_index + 1} of {len(outline['chapters'])}, \"{chapter['title']}\" ({chapter['title_english']}).",
+        "OUTLINE:\n" + json.dumps(
+            {key: outline.get(key) for key in ("title", "core_message", "tone", "narrator", "chapters")},
+            ensure_ascii=False,
+        ),
+        f"This chapter: {chapter['summary']}",
+        "Number the scenes from " + str(first_number) + ".",
+    ]
+    if last:
+        parts.append(
+            "The story so far ends with this narration: " + json.dumps(recent, ensure_ascii=False)
+            + f"\nThe last frame shows: {last.get('ending_state')}. Open the first scene on it."
+        )
+    else:
+        parts.append("This is the very start of the film: scene 1 is the cold open.")
+    if chapter_index == len(outline["chapters"]) - 1:
+        parts.append("This is the final chapter: end with the reflection and a question for the comments.")
+    parts += _common_parts(brief, research_notes, style_guide)[1:]
+    if feedback:
+        parts.append(f"CREATOR FEEDBACK to respect: {feedback}")
+    return "\n\n".join(parts)
+
+
+def build_prompts_prompt(brief: Dict[str, Any], proposal: Dict[str, Any], scenes: Optional[List[Dict[str, Any]]] = None) -> str:
+    scenes = proposal.get("scenes", []) if scenes is None else scenes
     storyboard = {
         "aspect_ratio": brief["aspect_ratio"],
         "tone": proposal.get("tone"),
@@ -188,7 +298,7 @@ def build_prompts_prompt(brief: Dict[str, Any], proposal: Dict[str, Any]) -> str
                     "camera", "sound_effects", "opening_state", "ending_state",
                 )
             }
-            for scene in proposal.get("scenes", [])
+            for scene in scenes
         ],
     }
     return (
@@ -199,6 +309,22 @@ def build_prompts_prompt(brief: Dict[str, Any], proposal: Dict[str, Any]) -> str
     )
 
 
+def _clean_scenes(scenes: List[Dict[str, Any]], first_number: int = 1) -> List[Dict[str, Any]]:
+    for number, scene in enumerate(scenes, start=first_number):
+        scene["number"] = number
+        scene["narration"] = " ".join(scene.get("narration", "").split())
+        scene["overlay_text"] = (scene.get("overlay_text") or "").strip()
+    return scenes
+
+
+def _clean_hashtags(tags: List[str]) -> List[str]:
+    return [
+        "#" + tag.lstrip("#").replace(" ", "")
+        for tag in tags or []
+        if tag and tag.strip("# ")
+    ][:8]
+
+
 def normalize_proposal(proposal: Proposal, expected_scenes: int) -> Dict[str, Any]:
     """Check the proposal's shape and renumber scenes."""
     data = proposal.model_dump()
@@ -207,16 +333,24 @@ def normalize_proposal(proposal: Proposal, expected_scenes: int) -> Dict[str, An
         raise RuntimeError("The director returned no scenes. Please try again.")
     if len(scenes) != expected_scenes:
         logger.warning("Director returned %s scenes, expected %s", len(scenes), expected_scenes)
-    for number, scene in enumerate(scenes, start=1):
-        scene["number"] = number
-        scene["narration"] = " ".join(scene.get("narration", "").split())
-        scene["overlay_text"] = (scene.get("overlay_text") or "").strip()
-    data["hashtags"] = [
-        "#" + tag.lstrip("#").replace(" ", "")
-        for tag in data.get("hashtags", [])
-        if tag and tag.strip("# ")
-    ][:8]
+    _clean_scenes(scenes)
+    data["hashtags"] = _clean_hashtags(data.get("hashtags", []))
+    data["genre"] = "explainer"
     return data
+
+
+def balance_chapters(chapters: List[Dict[str, Any]], total: int) -> List[int]:
+    """Scene counts per chapter that add up to ``total`` exactly."""
+    if not chapters:
+        return []
+    counts = [max(1, int(chapter.get("scene_count") or 1)) for chapter in chapters]
+    while sum(counts) > total and max(counts) > 1:
+        counts[counts.index(max(counts))] -= 1
+    index = 0
+    while sum(counts) < total:
+        counts[index % len(counts)] += 1
+        index += 1
+    return counts
 
 
 async def plan_research(brief: Dict[str, Any]) -> List[str]:
@@ -224,28 +358,113 @@ async def plan_research(brief: Dict[str, Any]) -> List[str]:
     return [query for query in plan.queries if query.strip()][:5]
 
 
+async def _write_documentary(
+    brief: Dict[str, Any],
+    research_notes: str,
+    feedback: Optional[str],
+    previous: Optional[Dict[str, Any]],
+    style_guide: Optional[str],
+    on_progress=None,
+) -> Dict[str, Any]:
+    total = scene_count(brief["duration_seconds"])
+    outline = (
+        await _run(
+            DocumentaryOutline,
+            DOCUMENTARY_SYSTEM_PROMPT,
+            build_outline_prompt(brief, research_notes, feedback, previous, style_guide),
+        )
+    ).model_dump()
+    if not outline.get("chapters"):
+        raise RuntimeError("The director returned no chapters. Please try again.")
+    counts = balance_chapters(outline["chapters"], total)
+    scenes: List[Dict[str, Any]] = []
+    notes: List[str] = []
+    for index, count in enumerate(counts):
+        outline["chapters"][index]["scene_count"] = count
+        written = 0
+        while written < count:
+            batch_size = min(MAX_SCENES_PER_CALL, count - written)
+            if on_progress:
+                await on_progress(
+                    f"Writing chapter {index + 1} of {len(counts)}: "
+                    f"{outline['chapters'][index]['title']}…"
+                )
+            batch = await _run(
+                SceneBatch,
+                DOCUMENTARY_SYSTEM_PROMPT,
+                build_chapter_prompt(
+                    brief, outline, index, len(scenes) + 1, batch_size, scenes,
+                    research_notes, feedback, style_guide,
+                ),
+            )
+            new_scenes = [scene.model_dump() for scene in batch.scenes][:batch_size]
+            if not new_scenes:
+                raise RuntimeError("The director returned an empty chapter. Please try again.")
+            _clean_scenes(new_scenes, len(scenes) + 1)
+            for scene in new_scenes:
+                scene["chapter"] = index
+            if written == 0 and not new_scenes[0]["overlay_text"] and index > 0:
+                new_scenes[0]["overlay_text"] = outline["chapters"][index]["title"]
+            scenes += new_scenes
+            notes += batch.fact_check_notes
+            written += len(new_scenes)
+    start = 1
+    for chapter, count in zip(outline["chapters"], counts):
+        chapter["first_scene"] = start
+        start += count
+    return {
+        **{key: outline[key] for key in (
+            "title", "title_english", "core_message", "hook_title", "tone", "music_mood",
+            "narrator", "chapters", "post_caption",
+        )},
+        "hashtags": _clean_hashtags(outline.get("hashtags", [])),
+        "scenes": scenes,
+        "fact_check_notes": notes,
+        "genre": "documentary",
+    }
+
+
 async def write_proposal(
     brief: Dict[str, Any],
     research_notes: str = "",
     feedback: Optional[str] = None,
     previous: Optional[Dict[str, Any]] = None,
+    style_guide: Optional[str] = None,
+    on_progress=None,
 ) -> Dict[str, Any]:
+    if brief.get("genre") == "documentary":
+        return await _write_documentary(brief, research_notes, feedback, previous, style_guide, on_progress)
     proposal = await _run(
         Proposal,
         DIRECTOR_SYSTEM_PROMPT,
-        build_proposal_prompt(brief, research_notes, feedback, previous),
+        build_proposal_prompt(brief, research_notes, feedback, previous, style_guide),
     )
     return normalize_proposal(proposal, scene_count(brief["duration_seconds"]))
 
 
-async def write_scene_prompts(brief: Dict[str, Any], proposal: Dict[str, Any]) -> Dict[str, Any]:
-    package = await _run(PromptPackage, PROMPT_SYSTEM_PROMPT, build_prompts_prompt(brief, proposal))
-    prompts = {item.number: item.prompt.strip() for item in package.prompts}
+async def write_scene_prompts(brief: Dict[str, Any], proposal: Dict[str, Any], on_progress=None) -> Dict[str, Any]:
+    """One prompt per scene, written in batches so long documentaries fit."""
     scenes = proposal.get("scenes", [])
+    prompts: Dict[int, str] = {}
+    continuity = ""
+    for start in range(0, len(scenes), PROMPTS_PER_CALL):
+        chunk = scenes[start:start + PROMPTS_PER_CALL]
+        if on_progress and len(scenes) > PROMPTS_PER_CALL:
+            await on_progress(f"Writing scene prompts {start + 1}-{start + len(chunk)} of {len(scenes)}…")
+        package = await _run(PromptPackage, PROMPT_SYSTEM_PROMPT, build_prompts_prompt(brief, proposal, chunk))
+        continuity = continuity or package.continuity
+        wanted = {scene["number"] for scene in chunk}
+        for item in package.prompts:
+            if item.number in wanted and item.prompt.strip():
+                prompts[item.number] = item.prompt.strip()
+        # Some models renumber from 1 inside a batch; map by position then.
+        if not wanted & set(prompts) and len(package.prompts) == len(chunk):
+            for scene, item in zip(chunk, package.prompts):
+                prompts[scene["number"]] = item.prompt.strip()
     missing = [scene["number"] for scene in scenes if not prompts.get(scene["number"])]
     if missing:
         raise RuntimeError(f"The director skipped prompts for scenes {missing}. Please try again.")
     return {
-        "continuity": package.continuity,
+        "continuity": continuity,
         "prompts": [{"number": scene["number"], "prompt": prompts[scene["number"]]} for scene in scenes],
     }

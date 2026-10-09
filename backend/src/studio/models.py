@@ -4,7 +4,12 @@ from typing import List, Literal
 
 from pydantic import BaseModel, Field
 
-Stage = Literal["hook", "disrupt", "secrets", "truth", "elevation"]
+Stage = Literal[
+    # Explainer (5-stage high-completion arc)
+    "hook", "disrupt", "secrets", "truth", "elevation",
+    # Documentary arc
+    "cold_open", "context", "rising", "turning_point", "aftermath", "reflection",
+]
 
 
 class ResearchPlan(BaseModel):
@@ -92,3 +97,32 @@ class PromptPackage(BaseModel):
         description="Short summary of the character, environment, audio and transition locks (English)"
     )
     prompts: List[ScenePrompt] = Field(description="One prompt per scene, in order")
+
+
+class Chapter(BaseModel):
+    title: str = Field(description="Short Kiswahili chapter title (2-5 words), shown on screen")
+    title_english: str = Field(description="The chapter title in English")
+    summary: str = Field(description="What this chapter covers and how it ends (English, 1-3 sentences)")
+    scene_count: int = Field(description="Number of ~10 second scenes in this chapter (2-10)")
+
+
+class DocumentaryOutline(BaseModel):
+    """The documentary's spine, written before its scenes."""
+
+    title: str = Field(description="Documentary title in Kiswahili")
+    title_english: str = Field(description="The title in English")
+    core_message: str = Field(description="What viewers should understand by the end (Kiswahili)")
+    hook_title: str = Field(description="3-8 word Kiswahili headline burned on screen during the cold open")
+    tone: str = Field(description="Emotional tone and pacing (English)")
+    music_mood: str = Field(description="Score mood, instruments and tempo (English)")
+    narrator: str = Field(description="One-line narrator persona and delivery (English)")
+    chapters: List[Chapter] = Field(description="3-8 chapters in order; their scene counts add up to the requested total")
+    post_caption: str = Field(description="1-2 sentence Kiswahili caption to post with the video, ending with a question")
+    hashtags: List[str] = Field(description="4-8 hashtags without spaces, mostly Kiswahili or East African")
+
+
+class SceneBatch(BaseModel):
+    scenes: List[Scene] = Field(description="Exactly the requested scenes, in order")
+    fact_check_notes: List[str] = Field(
+        description="Each factual claim these scenes make and its research source number, or 'general knowledge'"
+    )

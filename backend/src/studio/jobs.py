@@ -93,7 +93,15 @@ async def studio_direct(ctx: Dict[str, Any], production_id: str, feedback: Optio
             notes = format_web_notes(research)
         else:
             notes = format_research_notes((research or {}).get("sources") or [])
-        proposal = await write_proposal(brief, notes, feedback, previous if feedback else None)
+        style = store.load_asset("styles", brief["style_id"]) if brief.get("style_id") else None
+
+        async def on_progress(message: str) -> None:
+            _progress(production_id, "directing", message)
+
+        proposal = await write_proposal(
+            brief, notes, feedback, previous if feedback else None,
+            (style or {}).get("guide"), on_progress,
+        )
         store.update(
             production_id,
             status="proposal",
@@ -117,7 +125,10 @@ async def studio_prompts(ctx: Dict[str, Any], production_id: str) -> Dict[str, A
         return {"status": "missing"}
     try:
         _progress(production_id, "prompting", "Writing the scene prompts…")
-        prompts = await write_scene_prompts(production["brief"], production["proposal"])
+        async def on_progress(message: str) -> None:
+            _progress(production_id, "prompting", message)
+
+        prompts = await write_scene_prompts(production["brief"], production["proposal"], on_progress)
         store.update(production_id, status="shooting", prompts=prompts, progress_message=None)
         return {"status": "shooting"}
     except Exception as error:
@@ -184,6 +195,16 @@ async def studio_render(ctx: Dict[str, Any], production_id: str) -> Dict[str, An
     try:
         voice = brief.get("voice") or "sw-TZ-DaudiNeural"
         speed = int(brief.get("voice_speed", 0))
+        clone = None
+        if voice.startswith("custom:"):
+            clone = store.load_asset("voices", voice.split(":", 1)[1])
+            if not clone or clone.get("status") != "ready":
+                raise RuntimeError("Your cloned voice is not ready. Pick it again on the Studio page.")
+            voice = clone["base_voice"]
+            from .voice_clone import base_voice_se, load_se
+
+            _progress(production_id, "rendering", "Preparing your voice…")
+            clone_se = (await base_voice_se(voice), load_se(store.asset_dir("voices", clone["id"]) / "voice_se.pt"))
         scenes = []
         voice_cache: Dict[str, Any] = dict(production.get("voice_cache") or {})
         total = len(proposal["scenes"])
@@ -193,11 +214,19 @@ async def studio_render(ctx: Dict[str, Any], production_id: str) -> Dict[str, An
             if not clip.exists():
                 raise RuntimeError(f"Scene {number} has no clip yet. Upload it first.")
             _progress(production_id, "rendering", f"Recording the voice: scene {number} of {total}…")
-            key = _voice_key(scene, voice, speed)
+            key = _voice_key(scene, f"{voice}|{clone['id'] if clone else ''}", speed)
             voice_path = directory / "voice" / f"{key}.wav"
             cached = voice_cache.get(key)
             if not cached or not voice_path.exists():
                 cached = await voice_scene(scene["narration"], scene["stage"], voice, voice_path, speed)
+                if clone:
+                    from .voice_clone import convert_to_voice
+
+                    _progress(production_id, "rendering", f"Speaking in your voice: scene {number} of {total}…")
+                    edge_path = voice_path.with_suffix(".edge.wav")
+                    voice_path.replace(edge_path)
+                    await run_in_thread(convert_to_voice, edge_path, *clone_se, voice_path)
+                    edge_path.unlink(missing_ok=True)
                 voice_cache[key] = cached
                 store.update(production_id, voice_cache=voice_cache)
             scenes.append(
@@ -237,6 +266,51 @@ async def studio_render(ctx: Dict[str, Any], production_id: str) -> Dict[str, An
         return {"status": "done"}
     except Exception as error:
         return _fail(production_id, "render", error, "shooting")
+
+
+async def studio_style(ctx: Dict[str, Any], style_id: str) -> Dict[str, Any]:
+    """Read an inspiration channel's videos and write its style guide."""
+    from .styles import gather_material, write_style_guide
+
+    style = store.load_asset("styles", style_id)
+    if not style:
+        return {"status": "missing"}
+    try:
+        store.update_asset("styles", style_id, status="reading", error=None)
+        material = await run_in_thread(gather_material, style["urls"])
+        if not material:
+            raise RuntimeError("Katakata could not read any of these videos. Check the links are public YouTube videos or channels.")
+        store.update_asset("styles", style_id, status="writing")
+        guide = await write_style_guide(style["name"], material)
+        store.update_asset(
+            "styles", style_id, status="ready", error=None, **guide,
+            videos=[{key: video.get(key) for key in ("title", "channel", "url", "duration")} for video in material],
+        )
+        return {"status": "ready"}
+    except Exception as error:
+        logger.error("Style analysis failed for %s: %s", style_id, error, exc_info=True)
+        store.update_asset("styles", style_id, status="error", error=str(error) or type(error).__name__)
+        return {"status": "error"}
+
+
+async def studio_voice(ctx: Dict[str, Any], voice_id: str) -> Dict[str, Any]:
+    """Learn a cloned voice from the creator's recording."""
+    from .voice_clone import base_voice_se, learn_voice
+
+    record = store.load_asset("voices", voice_id)
+    if not record:
+        return {"status": "missing"}
+    directory = store.asset_dir("voices", voice_id)
+    try:
+        store.update_asset("voices", voice_id, status="learning", error=None)
+        info = await run_in_thread(learn_voice, directory / record["sample"], directory / "voice_se.pt")
+        await base_voice_se(record["base_voice"])
+        store.update_asset("voices", voice_id, status="ready", **info)
+        return {"status": "ready"}
+    except Exception as error:
+        logger.error("Voice cloning failed for %s: %s", voice_id, error, exc_info=True)
+        store.update_asset("voices", voice_id, status="error", error=str(error) or type(error).__name__)
+        return {"status": "error"}
 
 
 def delete_production_files(production: Dict[str, Any]) -> None:

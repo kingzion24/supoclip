@@ -57,7 +57,7 @@ def test_scene_count_scales_with_duration():
     assert director.scene_count(60) == 6
     assert director.scene_count(35) == 4
     assert director.scene_count(5) == 1
-    assert director.scene_count(1000) == 30
+    assert director.scene_count(1000) == 60
 
 
 def test_normalize_proposal_renumbers_and_cleans():
@@ -445,3 +445,160 @@ async def test_research_falls_back_to_wikipedia(studio_dirs, monkeypatch):
     monkeypatch.setattr(jobs, "gather_sources", lambda queries: [{"title": "W", "url": "u", "extract": "e"}])
     result = await jobs._research(production_id, {"idea": "x"})
     assert result["method"] == "wikipedia" and result["sources"][0]["title"] == "W"
+
+
+# --- documentaries ---------------------------------------------------------
+
+from src.studio.models import Chapter, DocumentaryOutline, PromptPackage, SceneBatch, ScenePrompt
+
+
+def test_balance_chapters_matches_total():
+    assert director.balance_chapters([{"scene_count": 5}, {"scene_count": 9}, {"scene_count": 2}], 12) == [5, 5, 2]
+    assert sum(director.balance_chapters([{"scene_count": 2}] * 3, 10)) == 10
+    assert director.balance_chapters([], 5) == []
+
+
+async def test_documentary_is_written_chapter_by_chapter(monkeypatch):
+    calls = []
+
+    async def fake_run(output_type, system_prompt, prompt):
+        calls.append((output_type, prompt))
+        assert system_prompt == director.DOCUMENTARY_SYSTEM_PROMPT
+        if output_type is DocumentaryOutline:
+            return DocumentaryOutline(
+                title="Vita vya Maji Maji", title_english="The Maji Maji War", core_message="m",
+                hook_title="Maji yaliyoahidi ushindi", tone="tense", music_mood="drums", narrator="calm",
+                chapters=[
+                    Chapter(title="Mwanzo", title_english="Start", summary="s", scene_count=2),
+                    Chapter(title="Vita", title_english="War", summary="s", scene_count=2),
+                ],
+                post_caption="c?", hashtags=["historia"],
+            )
+        count = int(prompt.split("(exactly ")[1].split(" ")[0])
+        return SceneBatch(scenes=[make_scene(1, "rising") for _ in range(count)], fact_check_notes=["n"])
+
+    monkeypatch.setattr(director, "_run", fake_run)
+    progress = []
+
+    async def on_progress(message):
+        progress.append(message)
+
+    brief = {"idea": "Maji Maji", "aspect_ratio": "16:9", "duration_seconds": 40, "genre": "documentary"}
+    proposal = await director.write_proposal(brief, "", style_guide="Hooks: start in action", on_progress=on_progress)
+    assert proposal["genre"] == "documentary"
+    assert [scene["number"] for scene in proposal["scenes"]] == [1, 2, 3, 4]
+    assert [scene["chapter"] for scene in proposal["scenes"]] == [0, 0, 1, 1]
+    assert proposal["chapters"][1]["first_scene"] == 3
+    assert proposal["scenes"][2]["overlay_text"] == "Siri"  # the director's own overlay wins
+    assert "STYLE INSPIRATION" in calls[0][1] and "Never copy" in calls[0][1]
+    assert "Scene 1 is the cold open" in calls[1][1] or "cold open" in calls[1][1]
+    assert "final chapter" in calls[2][1]
+    assert len(progress) == 2
+
+
+async def test_scene_prompts_are_written_in_batches(monkeypatch):
+    sizes = []
+
+    async def fake_run(output_type, system_prompt, prompt):
+        import json as _json
+
+        scenes = _json.loads(prompt.split("\n\n", 1)[1])["scenes"]
+        sizes.append(len(scenes))
+        # Renumber from 1 to check the positional fallback.
+        return PromptPackage(continuity="locks", prompts=[
+            ScenePrompt(number=index + 1, prompt=f"p{scene['number']}") for index, scene in enumerate(scenes)
+        ])
+
+    monkeypatch.setattr(director, "_run", fake_run)
+    proposal = director.normalize_proposal(make_proposal(11), 11)
+    package = await director.write_scene_prompts({"aspect_ratio": "9:16"}, proposal)
+    assert sizes == [8, 3]
+    assert [item["prompt"] for item in package["prompts"]] == [f"p{n}" for n in range(1, 12)]
+    assert package["continuity"] == "locks"
+
+
+# --- inspiration styles and cloned voices ----------------------------------
+
+from src.studio import styles
+
+
+def test_style_prompt_and_excerpt():
+    long = " ".join(f"w{i}" for i in range(2000))
+    cut = styles.excerpt(long)
+    assert cut.startswith("w0 ") and cut.endswith("w1999") and "[…]" in cut
+    prompt = styles.build_style_prompt("Kurzgesagt", [{"title": "T", "channel": "C", "duration": 600, "description": "d", "transcript": ""}])
+    assert '"T" by C (10 min)' in prompt and "(no subtitles available)" in prompt
+
+
+async def test_style_job_writes_guide(studio_dirs, monkeypatch):
+    monkeypatch.setattr(store, "get_config", lambda: SimpleNamespace(temp_dir=str(studio_dirs)))
+    record = store.save_asset("styles", {"id": store.new_production_id(), "user_id": "me", "name": "Inspo", "urls": ["https://youtu.be/v02xGi4-CHE"]})
+    monkeypatch.setattr(styles, "gather_material", lambda urls: [{"title": "T", "channel": "C", "url": "u", "duration": 60}])
+    monkeypatch.setattr(styles, "write_style_guide", AsyncMock(return_value={"summary": "s", "guide": "g"}))
+    assert (await jobs.studio_style({}, record["id"]))["status"] == "ready"
+    saved = store.load_asset("styles", record["id"])
+    assert saved["guide"] == "g" and saved["videos"][0]["title"] == "T"
+
+
+async def test_style_and_voice_routes(client, monkeypatch, studio_dirs):
+    http, enqueue = client
+    monkeypatch.setattr(store, "get_config", lambda: SimpleNamespace(temp_dir=str(studio_dirs)))
+    assert (await http.post("/studio/styles", json={"name": "Bad", "urls": ["https://vimeo.com/1"]})).status_code == 400
+    created = (await http.post("/studio/styles", json={"name": "Inspo", "urls": ["https://youtu.be/v02xGi4-CHE"]})).json()
+    enqueue.assert_awaited_with("studio_style", created["id"])
+    assert (await http.get("/studio/styles")).json()["styles"][0]["name"] == "Inspo"
+    # A production cannot use a style until it is analysed.
+    response = await http.post("/studio/", json={"idea": "Historia ya Tanganyika", "style_id": created["id"]})
+    assert response.status_code == 409
+
+    files = {"sample": ("me.wav", b"audio", "audio/wav")}
+    assert (await http.post("/studio/voices", data={"name": "Mimi"}, files=files)).status_code == 400  # no consent
+    monkeypatch.setattr(studio_routes, "ffprobe_duration", lambda path: 45.0)
+    voice = (await http.post("/studio/voices", data={"name": "Mimi", "consent": "true"}, files=files)).json()
+    assert voice["status"] == "queued" and "sample" not in voice
+    enqueue.assert_awaited_with("studio_voice", voice["id"])
+    assert (await http.post("/studio/", json={"idea": "Historia ya Tanganyika", "voice": f"custom:{voice['id']}"})).status_code == 409
+    store.update_asset("voices", voice["id"], status="ready")
+    assert (await http.post("/studio/", json={"idea": "Historia ya Tanganyika", "voice": f"custom:{voice['id']}"})).status_code == 201
+    monkeypatch.setattr(studio_routes, "resolve_authenticated_user_id", AsyncMock(return_value="intruder"))
+    assert (await http.post("/studio/", json={"idea": "Historia ya Tanganyika", "voice": f"custom:{voice['id']}"})).status_code == 400
+    assert (await http.delete(f"/studio/voices/{voice['id']}")).status_code == 404
+
+
+async def test_documentary_length_limits(client):
+    http, _ = client
+    assert (await http.post("/studio/", json={"idea": "Historia ya Zanzibar", "duration_seconds": 300})).status_code == 400
+    ok = await http.post("/studio/", json={"idea": "Historia ya Zanzibar", "duration_seconds": 300, "genre": "documentary"})
+    assert ok.status_code == 201 and ok.json()["brief"]["genre"] == "documentary"
+
+
+async def test_render_speaks_in_a_cloned_voice(studio_dirs, monkeypatch):
+    monkeypatch.setattr(store, "get_config", lambda: SimpleNamespace(temp_dir=str(studio_dirs)))
+    voice = store.save_asset("voices", {"id": store.new_production_id(), "user_id": "me", "status": "ready", "base_voice": "sw-TZ-RehemaNeural"})
+    production_id = store.new_production_id()
+    proposal = director.normalize_proposal(make_proposal(1), 1)
+    with store.production_lock(production_id):
+        store.save({"id": production_id, "user_id": "me", "proposal": proposal, "brief": {
+            "aspect_ratio": "9:16", "voice": f"custom:{voice['id']}", "duration_seconds": 10}})
+    (store.production_dir(production_id) / "scene-01.mp4").write_bytes(b"clip")
+    used = {}
+
+    async def fake_voice_scene(narration, stage, base, path, speed):
+        used["base"] = base
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"edge")
+        return {"duration": 4.0, "words": []}
+
+    def fake_convert(source, src_se, tgt_se, output):
+        used["converted"] = (source.read_bytes(), src_se, tgt_se)
+        output.write_bytes(b"me")
+
+    import src.studio.voice_clone as voice_clone
+
+    monkeypatch.setattr(jobs, "voice_scene", fake_voice_scene)
+    monkeypatch.setattr(voice_clone, "convert_to_voice", fake_convert)
+    monkeypatch.setattr(voice_clone, "base_voice_se", AsyncMock(return_value="SRC"))
+    monkeypatch.setattr(voice_clone, "load_se", lambda path: "TGT")
+    monkeypatch.setattr(jobs, "assemble_video", lambda *args: {"duration": 4.0})
+    assert (await jobs.studio_render({}, production_id))["status"] == "done"
+    assert used == {"base": "sw-TZ-RehemaNeural", "converted": (b"edge", "SRC", "TGT")}

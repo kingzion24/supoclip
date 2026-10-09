@@ -35,6 +35,12 @@ STAGE_PROSODY = {
     "secrets": (0, -1),
     "truth": (-6, -2),
     "elevation": (-2, 1),
+    "cold_open": (2, 1),
+    "context": (-2, 0),
+    "rising": (2, 0),
+    "turning_point": (-4, -1),
+    "aftermath": (-3, -1),
+    "reflection": (-6, -1),
 }
 SAMPLE_RATE = 48000
 PAUSE_AFTER_SENTENCE = 0.28

@@ -2,10 +2,10 @@
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 import aiofiles
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,11 +28,18 @@ router = APIRouter(prefix="/studio", tags=["studio"])
 
 MAX_CLIP_BYTES = 300 * 1024 * 1024
 MIN_DURATION = 20
-MAX_DURATION = 180
+MAX_DURATION = 600
+GENRE_DURATIONS = {
+    "explainer": {"min": 20, "max": 180, "choices": [30, 60, 90, 120, 180]},
+    "documentary": {"min": 60, "max": 600, "choices": [120, 180, 300, 420, 600]},
+}
+MAX_VOICE_SAMPLE_BYTES = 60 * 1024 * 1024
 
 
 class CreateProduction(BaseModel):
     idea: str = Field(min_length=10, max_length=4000)
+    genre: Literal["explainer", "documentary"] = "explainer"
+    style_id: Optional[str] = None
     aspect_ratio: str = Field(default="9:16", pattern=r"^(9:16|16:9)$")
     duration_seconds: int = Field(default=60, ge=MIN_DURATION, le=MAX_DURATION)
     voice: str = DEFAULT_VOICE
@@ -61,7 +68,7 @@ class GenerateRequest(BaseModel):
 
 
 class RenderSettings(BaseModel):
-    voice: Optional[str] = None
+    voice: Optional[str] = Field(default=None, max_length=60)
     voice_speed: Optional[int] = Field(default=None, ge=-20, le=20)
     captions: Optional[bool] = None
     caption_template: Optional[str] = None
@@ -71,9 +78,32 @@ class RenderSettings(BaseModel):
     music_volume: Optional[float] = Field(default=None, ge=0.0, le=0.5)
 
 
-def _clean_brief(data: Dict[str, Any]) -> Dict[str, Any]:
-    if data.get("voice") is not None and data["voice"] not in VOICES:
-        raise HTTPException(400, "Unknown voice")
+class StyleCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=80)
+    urls: List[str] = Field(min_length=1, max_length=6)
+
+
+def _owned_asset(kind: str, asset_id: str, user_id: str) -> Dict[str, Any]:
+    record = store.load_asset(kind, asset_id)
+    if not record or record.get("user_id") != user_id:
+        raise HTTPException(404, "Not found")
+    return record
+
+
+def _clean_brief(data: Dict[str, Any], user_id: str) -> Dict[str, Any]:
+    voice = data.get("voice")
+    if voice is not None and voice not in VOICES:
+        record = store.load_asset("voices", voice.split(":", 1)[1]) if voice.startswith("custom:") else None
+        if not record or record.get("user_id") != user_id:
+            raise HTTPException(400, "Unknown voice")
+        if record.get("status") != "ready":
+            raise HTTPException(409, "That cloned voice is still being learned")
+    if data.get("style_id"):
+        style = store.load_asset("styles", data["style_id"])
+        if not style or style.get("user_id") != user_id:
+            raise HTTPException(400, "Unknown inspiration style")
+        if style.get("status") != "ready":
+            raise HTTPException(409, "That inspiration style is still being analysed")
     if data.get("caption_template") is not None and data["caption_template"] not in get_template_names():
         raise HTTPException(400, "Unknown caption template")
     music = data.get("music")
@@ -82,7 +112,13 @@ def _clean_brief(data: Dict[str, Any]) -> Dict[str, Any]:
     if "music" in data and not music:
         data["music"] = None
     if "duration_seconds" in data:
-        data["duration_seconds"] = scene_count(data["duration_seconds"]) * SCENE_SECONDS
+        limits = GENRE_DURATIONS[data.get("genre") or "explainer"]
+        seconds = scene_count(data["duration_seconds"]) * SCENE_SECONDS
+        if not limits["min"] <= seconds <= limits["max"]:
+            raise HTTPException(
+                400, f"{(data.get('genre') or 'explainer').title()} videos can be {limits['min']}-{limits['max']} seconds long"
+            )
+        data["duration_seconds"] = seconds
     return data
 
 
@@ -129,10 +165,125 @@ async def options():
         "default_voice": DEFAULT_VOICE,
         "caption_templates": get_template_names(),
         "music": list_music_tracks(),
-        "durations": [30, 60, 90, 120, 180],
+        "durations": GENRE_DURATIONS["explainer"]["choices"],
+        "genres": {name: limits["choices"] for name, limits in GENRE_DURATIONS.items()},
         "max_duration": MAX_DURATION,
         "auto_generate": bool(get_config().google_api_key),
     }
+
+
+# --- Inspiration styles ----------------------------------------------------
+
+
+def _public_asset(record: Dict[str, Any]) -> Dict[str, Any]:
+    return {key: value for key, value in record.items() if key not in {"user_id", "sample"}}
+
+
+@router.get("/styles")
+async def list_styles(request: Request, db: AsyncSession = Depends(get_db)):
+    user_id = await _user(request, db)
+    return {"styles": [_public_asset(item) for item in store.list_assets("styles", user_id)]}
+
+
+@router.post("/styles", status_code=201)
+async def create_style(body: StyleCreate, request: Request, db: AsyncSession = Depends(get_db)):
+    user_id = await _user(request, db)
+    urls = [url.strip() for url in body.urls if url.strip()]
+    if not urls or not all("youtube.com" in url or "youtu.be" in url for url in urls):
+        raise HTTPException(400, "Add YouTube channel or video links")
+    record = store.save_asset("styles", {
+        "id": store.new_production_id(), "user_id": user_id, "created_at": store.now_iso(),
+        "name": body.name.strip(), "urls": urls, "status": "queued", "summary": "", "guide": "", "videos": [],
+    })
+    await _enqueue("studio_style", record["id"])
+    return _public_asset(record)
+
+
+@router.post("/styles/{style_id}/refresh", status_code=202)
+async def refresh_style(style_id: str, request: Request, db: AsyncSession = Depends(get_db)):
+    user_id = await _user(request, db)
+    _owned_asset("styles", style_id, user_id)
+    store.update_asset("styles", style_id, status="queued", error=None)
+    await _enqueue("studio_style", style_id)
+    return {"status": "queued"}
+
+
+@router.delete("/styles/{style_id}")
+async def delete_style(style_id: str, request: Request, db: AsyncSession = Depends(get_db)):
+    user_id = await _user(request, db)
+    _owned_asset("styles", style_id, user_id)
+    import shutil
+
+    shutil.rmtree(store.asset_dir("styles", style_id), ignore_errors=True)
+    return {"deleted": True}
+
+
+# --- Cloned voices ---------------------------------------------------------
+
+
+@router.get("/voices")
+async def list_voices(request: Request, db: AsyncSession = Depends(get_db)):
+    user_id = await _user(request, db)
+    return {"voices": [_public_asset(item) for item in store.list_assets("voices", user_id)]}
+
+
+@router.post("/voices", status_code=201)
+async def create_voice(
+    request: Request,
+    name: str = Form(..., min_length=2, max_length=60),
+    base_voice: str = Form(DEFAULT_VOICE),
+    consent: bool = Form(False),
+    sample: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload a recording to clone. Only your own voice, or one you have permission to use."""
+    user_id = await _user(request, db)
+    if not consent:
+        raise HTTPException(400, "Confirm that this is your voice or that you have permission to clone it")
+    if base_voice not in VOICES:
+        raise HTTPException(400, "Unknown base voice")
+    voice_id = store.new_production_id()
+    directory = store.asset_dir("voices", voice_id)
+    directory.mkdir(parents=True, exist_ok=True)
+    suffix = Path(sample.filename or "sample.wav").suffix.lower()[:6] or ".wav"
+    target = directory / f"sample{suffix}"
+    written = 0
+    async with aiofiles.open(target, "wb") as destination:
+        while chunk := await sample.read(1024 * 1024):
+            written += len(chunk)
+            if written > MAX_VOICE_SAMPLE_BYTES:
+                await destination.close()
+                import shutil
+
+                shutil.rmtree(directory, ignore_errors=True)
+                raise HTTPException(413, "That recording is too large (60 MB maximum)")
+            await destination.write(chunk)
+    try:
+        seconds = await run_in_thread(ffprobe_duration, target)
+    except Exception:
+        seconds = 0
+    if seconds < 20:
+        import shutil
+
+        shutil.rmtree(directory, ignore_errors=True)
+        raise HTTPException(400, "Upload at least 30 seconds of clear speech (a quiet room, no music)")
+    record = store.save_asset("voices", {
+        "id": voice_id, "user_id": user_id, "created_at": store.now_iso(), "name": name.strip(),
+        "base_voice": base_voice, "sample": target.name, "duration": round(seconds, 1),
+        "status": "queued", "consent_at": store.now_iso(),
+    })
+    await _enqueue("studio_voice", voice_id)
+    return _public_asset(record)
+
+
+@router.delete("/voices/{voice_id}")
+async def delete_voice(voice_id: str, request: Request, db: AsyncSession = Depends(get_db)):
+    user_id = await _user(request, db)
+    _owned_asset("voices", voice_id, user_id)
+    import shutil
+
+    shutil.rmtree(store.asset_dir("voices", voice_id), ignore_errors=True)
+    return {"deleted": True}
 
 
 @router.get("/")
@@ -158,7 +309,7 @@ async def list_productions(request: Request, db: AsyncSession = Depends(get_db))
 @router.post("/", status_code=201)
 async def create_production(body: CreateProduction, request: Request, db: AsyncSession = Depends(get_db)):
     user_id = await _user(request, db)
-    brief = _clean_brief(body.model_dump())
+    brief = _clean_brief(body.model_dump(), user_id)
     brief["idea"] = brief["idea"].strip()
     production_id = store.new_production_id()
     production = {
@@ -373,7 +524,9 @@ async def render(
     missing = [scene["number"] for scene in scenes if not (directory / store.scene_clip_name(scene["number"])).exists()]
     if missing:
         raise HTTPException(409, f"Upload clips for scenes {', '.join(map(str, missing))} first")
-    changes = _clean_brief({key: value for key, value in (body.model_dump() if body else {}).items() if value is not None})
+    changes = _clean_brief(
+        {key: value for key, value in (body.model_dump() if body else {}).items() if value is not None}, user_id
+    )
     with store.production_lock(production_id):
         production = store.load(production_id)
         production["brief"].update(changes)

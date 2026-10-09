@@ -1,4 +1,8 @@
-export type Stage = "hook" | "disrupt" | "secrets" | "truth" | "elevation";
+export type Stage =
+  | "hook" | "disrupt" | "secrets" | "truth" | "elevation"
+  | "cold_open" | "context" | "rising" | "turning_point" | "aftermath" | "reflection";
+
+export type Genre = "explainer" | "documentary";
 
 export interface StudioScene {
   number: number;
@@ -12,6 +16,7 @@ export interface StudioScene {
   opening_state: string;
   ending_state: string;
   overlay_text: string;
+  chapter?: number;
 }
 
 export interface StudioProposal {
@@ -26,10 +31,14 @@ export interface StudioProposal {
   post_caption: string;
   hashtags: string[];
   fact_check_notes: string[];
+  genre?: Genre;
+  chapters?: { title: string; title_english: string; summary: string; scene_count: number; first_scene: number }[];
 }
 
 export interface StudioBrief {
   idea: string;
+  genre?: Genre;
+  style_id?: string | null;
   aspect_ratio: "9:16" | "16:9";
   duration_seconds: number;
   voice: string;
@@ -87,6 +96,7 @@ export interface StudioOptions {
   caption_templates: string[];
   music: string[];
   durations: number[];
+  genres?: Record<Genre, number[]>;
   max_duration: number;
   auto_generate: boolean;
 }
@@ -99,7 +109,36 @@ export const STAGE_LABELS: Record<Stage, string> = {
   secrets: "Hidden detail",
   truth: "Core truth",
   elevation: "Close + question",
+  cold_open: "Cold open",
+  context: "Context",
+  rising: "Rising action",
+  turning_point: "Turning point",
+  aftermath: "Aftermath",
+  reflection: "Reflection + question",
 };
+
+export interface StudioStyle {
+  id: string;
+  name: string;
+  urls: string[];
+  status: "queued" | "reading" | "writing" | "ready" | "error";
+  summary: string;
+  guide: string;
+  videos: { title: string; channel: string; url: string; duration: number | null }[];
+  error?: string | null;
+  created_at: string;
+}
+
+export interface StudioVoice {
+  id: string;
+  name: string;
+  base_voice: string;
+  status: "queued" | "learning" | "ready" | "error";
+  duration: number;
+  speech_seconds?: number;
+  error?: string | null;
+  created_at: string;
+}
 
 export const STATUS_LABELS: Record<StudioStatus, string> = {
   researching: "Researching",

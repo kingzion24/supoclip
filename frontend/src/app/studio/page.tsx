@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Clapperboard, Loader2, Sparkles } from "lucide-react";
@@ -10,9 +10,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 import { NativeSelect } from "@/components/studio/native-select";
+import { StylesPanel } from "@/components/studio/styles-panel";
+import { VoicesPanel } from "@/components/studio/voices-panel";
 import {
   BUSY_STATUSES, STATUS_LABELS, formatDuration, readError,
-  type ProductionSummary, type StudioOptions,
+  type Genre, type ProductionSummary, type StudioOptions, type StudioStyle, type StudioVoice,
 } from "@/lib/studio";
 
 const IDEAS = [
@@ -20,6 +22,11 @@ const IDEAS = [
   "Historia ya Vita vya Maji Maji kwa dakika moja: kwa nini ilianza na tunajifunza nini",
   "Saikolojia ya kuahirisha mambo: ubongo wako unakudanganya vipi",
   "Jinsi M-Pesa ilivyobadilisha maisha Afrika Mashariki",
+];
+const DOCUMENTARY_IDEAS = [
+  "Documentary: kuanguka kwa Dola ya Kilwa, mji tajiri wa biashara wa pwani ya Afrika Mashariki",
+  "Documentary: hadithi ya Muungano wa Tanganyika na Zanzibar mwaka 1964",
+  "Documentary: jinsi Bitcoin ilivyozaliwa na kwa nini benki kuu zinaiogopa",
 ];
 
 export default function StudioPage() {
@@ -31,8 +38,41 @@ export default function StudioPage() {
   const [duration, setDuration] = useState(60);
   const [voice, setVoice] = useState("sw-TZ-DaudiNeural");
   const [research, setResearch] = useState(true);
+  const [genre, setGenre] = useState<Genre>("explainer");
+  const [styleId, setStyleId] = useState("");
+  const [styles, setStyles] = useState<StudioStyle[]>([]);
+  const [voices, setVoices] = useState<StudioVoice[]>([]);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const loadAssets = useCallback(async () => {
+    const [styleResponse, voiceResponse] = await Promise.all([
+      fetch("/api/studio/styles", { cache: "no-store" }).catch(() => null),
+      fetch("/api/studio/voices", { cache: "no-store" }).catch(() => null),
+    ]);
+    if (styleResponse?.ok) setStyles((await styleResponse.json()).styles || []);
+    if (voiceResponse?.ok) setVoices((await voiceResponse.json()).voices || []);
+  }, []);
+
+  const assetsBusy = styles.some((item) => !["ready", "error"].includes(item.status))
+    || voices.some((item) => !["ready", "error"].includes(item.status));
+  useEffect(() => {
+    void loadAssets();
+  }, [loadAssets]);
+  useEffect(() => {
+    if (!assetsBusy) return;
+    const timer = window.setInterval(() => void loadAssets(), 4000);
+    return () => window.clearInterval(timer);
+  }, [assetsBusy, loadAssets]);
+
+  const durationChoices = options?.genres?.[genre] || (genre === "documentary" ? [120, 180, 300, 420, 600] : [30, 60, 90, 120, 180]);
+  function chooseGenre(value: Genre) {
+    setGenre(value);
+    setDuration(value === "documentary" ? 300 : 60);
+    if (value === "documentary") setAspect("16:9");
+  }
+  const readyVoices = voices.filter((item) => item.status === "ready");
+  const readyStyles = styles.filter((item) => item.status === "ready");
 
   useEffect(() => {
     fetch("/api/studio/options", { cache: "no-store" })
@@ -58,7 +98,9 @@ export default function StudioPage() {
       const response = await fetch("/api/studio", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idea, aspect_ratio: aspect, duration_seconds: duration, voice, research }),
+        body: JSON.stringify({
+          idea, genre, aspect_ratio: aspect, duration_seconds: duration, voice, research, style_id: styleId || null,
+        }),
       });
       if (!response.ok) throw new Error(await readError(response, "Could not start the video"));
       const production = await response.json();
@@ -93,7 +135,7 @@ export default function StudioPage() {
             maxLength={4000}
           />
           <div className="mt-2 flex flex-wrap gap-1.5">
-            {IDEAS.map((example) => (
+            {(genre === "documentary" ? DOCUMENTARY_IDEAS : IDEAS).map((example) => (
               <button
                 key={example}
                 type="button"
@@ -106,7 +148,28 @@ export default function StudioPage() {
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Field label="Genre">
+            <div className="inline-flex rounded-lg border bg-background p-0.5">
+              {([["explainer", "Explainer short"], ["documentary", "Documentary"]] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={genre === value}
+                  onClick={() => chooseGenre(value)}
+                  className={cn("h-8 rounded-md px-3 text-xs font-medium", genre === value ? "bg-foreground text-background" : "text-muted-foreground")}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </Field>
+          <Field label="Inspiration">
+            <NativeSelect value={styleId} onChange={setStyleId}>
+              <option value="">None</option>
+              {readyStyles.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </NativeSelect>
+          </Field>
           <Field label="Format">
             <div className="inline-flex rounded-lg border bg-background p-0.5">
               {(["9:16", "16:9"] as const).map((value) => (
@@ -124,13 +187,14 @@ export default function StudioPage() {
           </Field>
           <Field label="Length">
             <NativeSelect value={String(duration)} onChange={(value) => setDuration(Number(value))}>
-              {(options?.durations || [30, 60, 90, 120, 180]).map((value) => (
+              {durationChoices.map((value) => (
                 <option key={value} value={value}>{formatDuration(value)} · {value / 10} scenes</option>
               ))}
             </NativeSelect>
           </Field>
           <Field label="Voice">
             <NativeSelect value={voice} onChange={setVoice}>
+              {readyVoices.map((item) => <option key={item.id} value={`custom:${item.id}`}>{item.name} (my voice)</option>)}
               {(options?.voices || [{ id: "sw-TZ-DaudiNeural", label: "Daudi (Tanzania, male)" }]).map((item) => (
                 <option key={item.id} value={item.id}>{item.label}</option>
               ))}
@@ -146,7 +210,10 @@ export default function StudioPage() {
 
         <p className="text-xs text-muted-foreground">
           Style: <span className="font-medium text-foreground">Cinematic Story</span>, a red-beanie stick figure in full-color scenes.
-          You review and edit the script before anything is generated.
+          {genre === "documentary"
+            ? " Documentaries are written in chapters with a cold open, rising tension and a turning point."
+            : " Explainers follow a 5-stage hook-to-question arc."}
+          {" "}You review and edit the script before anything is generated.
         </p>
 
         {error && (
@@ -160,6 +227,11 @@ export default function StudioPage() {
           Write the script
         </Button>
       </form>
+
+      <div className="mt-6 grid gap-4">
+        <StylesPanel styles={styles} reload={loadAssets} />
+        <VoicesPanel voices={voices} options={options} reload={loadAssets} />
+      </div>
 
       <section className="mt-10" aria-labelledby="productions-heading">
         <h2 id="productions-heading" className="mb-3 text-sm font-medium text-muted-foreground">Your Studio videos</h2>

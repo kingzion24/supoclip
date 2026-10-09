@@ -17,7 +17,7 @@ import { NativeSelect } from "@/components/studio/native-select";
 import { cn } from "@/lib/utils";
 import {
   BUSY_STATUSES, STAGE_LABELS, STATUS_LABELS, formatDuration, readError,
-  type Production, type StudioOptions, type StudioScene,
+  type Production, type StudioOptions, type StudioScene, type StudioVoice,
 } from "@/lib/studio";
 
 const FLOW_URL = "https://labs.google/fx/tools/flow";
@@ -28,6 +28,7 @@ export default function ProductionPage({ params }: { params: Promise<{ id: strin
   const [production, setProduction] = useState<Production | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [options, setOptions] = useState<StudioOptions | null>(null);
+  const [myVoices, setMyVoices] = useState<StudioVoice[]>([]);
   const [busyAction, setBusyAction] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -44,6 +45,10 @@ export default function ProductionPage({ params }: { params: Promise<{ id: strin
     fetch("/api/studio/options", { cache: "no-store" })
       .then((response) => (response.ok ? response.json() : null))
       .then(setOptions)
+      .catch(() => undefined);
+    fetch("/api/studio/voices", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : { voices: [] }))
+      .then((data: { voices: StudioVoice[] }) => setMyVoices((data.voices || []).filter((item) => item.status === "ready")))
       .catch(() => undefined);
   }, [load]);
 
@@ -98,7 +103,7 @@ export default function ProductionPage({ params }: { params: Promise<{ id: strin
           <h1 className="font-display text-2xl font-bold tracking-tight">{proposal?.title || "New Studio video"}</h1>
           {proposal?.title_english && <p className="text-sm text-muted-foreground">{proposal.title_english}</p>}
           <p className="mt-1 text-xs text-muted-foreground">
-            {brief.aspect_ratio} · {formatDuration(brief.duration_seconds)} · Cinematic Story
+            {brief.genre === "documentary" ? "Documentary" : "Explainer"} · {brief.aspect_ratio} · {formatDuration(brief.duration_seconds)} · Cinematic Story
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -162,7 +167,7 @@ export default function ProductionPage({ params }: { params: Promise<{ id: strin
       )}
 
       {proposal && prompts && (
-        <RenderSection production={production} options={options} disabled={busy || busyAction !== null} act={act} busyAction={busyAction} />
+        <RenderSection production={production} options={options} myVoices={myVoices} disabled={busy || busyAction !== null} act={act} busyAction={busyAction} />
       )}
 
       {production.final && <FinalSection production={production} />}
@@ -248,9 +253,23 @@ function ProposalSection({ production, disabled, approved, act, busyAction }: {
       </div>
 
       <div className="space-y-3">
-        {proposal.scenes.map((scene) => (
-          <SceneCard key={`${production.revision}-${scene.number}`} productionId={production.id} scene={scene} disabled={disabled} />
-        ))}
+        {proposal.scenes.map((scene) => {
+          const chapter = proposal.chapters?.find((item) => item.first_scene === scene.number);
+          return (
+            <div key={`${production.revision}-${scene.number}`} className="space-y-3">
+              {chapter && (
+                <div className="pt-2">
+                  <h3 className="text-sm font-semibold">
+                    Chapter {(scene.chapter ?? 0) + 1}: {chapter.title}
+                    <span className="ml-2 font-normal text-muted-foreground">{chapter.title_english}</span>
+                  </h3>
+                  <p className="text-xs text-muted-foreground">{chapter.summary}</p>
+                </div>
+              )}
+              <SceneCard productionId={production.id} scene={scene} disabled={disabled} />
+            </div>
+          );
+        })}
       </div>
 
       {proposal.fact_check_notes.length > 0 && (
@@ -486,9 +505,10 @@ function ShotCard({ productionId, number, prompt, hasClip, disabled, reload, err
   );
 }
 
-function RenderSection({ production, options, disabled, act, busyAction }: {
+function RenderSection({ production, options, myVoices, disabled, act, busyAction }: {
   production: Production;
   options: StudioOptions | null;
+  myVoices: StudioVoice[];
   disabled: boolean;
   act: (name: string, path: string, init?: RequestInit) => Promise<boolean>;
   busyAction: string | null;
@@ -511,6 +531,7 @@ function RenderSection({ production, options, disabled, act, busyAction }: {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Setting label="Voice">
           <NativeSelect value={voice} onChange={setVoice}>
+            {myVoices.map((item) => <option key={item.id} value={`custom:${item.id}`}>{item.name} (my voice)</option>)}
             {(options?.voices || [{ id: brief.voice, label: brief.voice }]).map((item) => (
               <option key={item.id} value={item.id}>{item.label}</option>
             ))}

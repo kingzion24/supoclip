@@ -128,7 +128,9 @@ async def process_video_task(
             raise
 
 from ..services.editor_service import prepare_editor, export_editor, combine_editor
-from ..studio.jobs import studio_direct, studio_generate, studio_prompts, studio_render
+from ..studio.jobs import (
+    studio_direct, studio_generate, studio_prompts, studio_render, studio_style, studio_voice,
+)
 
 # Worker configuration for arq
 class WorkerSettings:
@@ -143,6 +145,7 @@ class WorkerSettings:
     functions = [
         process_video_task, prepare_editor, export_editor, combine_editor,
         studio_direct, studio_prompts, studio_generate, studio_render,
+        studio_style, studio_voice,
     ]
     queue_name = "supoclip_tasks"
     health_check_interval = 30
